@@ -142,23 +142,11 @@ body {
     }
 }
 
-.logo-area i {
-    font-size: 3rem;
-    color: var(--primary);
-    margin-bottom: 16px;
-    display: block;
-    filter: drop-shadow(0 4px 12px rgba(91, 124, 255, 0.4));
-}
-
-.logo-area h1 {
-    font-size: 2.5rem;
-    font-weight: 700;
-    margin: 0 0 8px 0;
-    background: linear-gradient(135deg, #ffffff 0%, #8b92a7 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
-    letter-spacing: -0.5px;
+.app-logo {
+    max-width: 200px;
+    height: auto;
+    filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.3));
+    margin-bottom: 24px;
 }
 
 .subtitle {
