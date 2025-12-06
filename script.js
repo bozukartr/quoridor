@@ -40,9 +40,10 @@ const STATE = {
     wallOrientation: 'vertical', // 'vertical' or 'horizontal'
     board: [],
     players: {
-        p1: { x: Math.floor(GRID_COLS / 2), y: 0, wallsLeft: 10 },
-        p2: { x: Math.floor(GRID_COLS / 2), y: GRID_ROWS - 1, wallsLeft: 10 }
+        p1: { x: Math.floor(GRID_COLS / 2), y: 0, wallsV: 5, wallsH: 5, hasPowerup: false },
+        p2: { x: Math.floor(GRID_COLS / 2), y: GRID_ROWS - 1, wallsV: 5, wallsH: 5, hasPowerup: false }
     },
+    powerup: null, // {x, y}
     walls: [], // Array of {x, y, type}
     gameActive: false,
     pendingAction: null // { type: 'move'|'wall', x, y, orientation? }
@@ -60,7 +61,8 @@ const controls = {
     moveBtn: document.getElementById('move-mode-btn'),
     wallBtn: document.getElementById('wall-mode-btn'),
     rotateBtn: document.getElementById('wall-rotate-btn'),
-    orientationSpan: document.getElementById('wall-orientation')
+    orientationSpan: document.getElementById('wall-orientation'),
+    powerupBtn: document.getElementById('powerup-btn')
 };
 
 // --- INITIALIZATION ---
@@ -80,6 +82,7 @@ function setupEventListeners() {
     controls.moveBtn.addEventListener('click', () => setMode('move'));
     controls.wallBtn.addEventListener('click', () => setMode('wall'));
     controls.rotateBtn.addEventListener('click', toggleOrientation);
+    controls.powerupBtn.addEventListener('click', () => setMode('destroy'));
 }
 
 function generateGrid() {
@@ -176,10 +179,29 @@ function setMode(mode) {
 
     if (mode === 'wall') {
         controls.rotateBtn.classList.remove('hidden');
+        updateWallCounts();
     } else {
         controls.rotateBtn.classList.add('hidden');
     }
-    renderValidMoves(); // Re-render to show/hide highlights
+
+    // Toggle Powerup Button Active
+    controls.powerupBtn.classList.toggle('active', mode === 'destroy');
+}
+
+function updateWallCounts() {
+    if (!STATE.playerId) return;
+    const me = STATE.players[STATE.playerId];
+    const v = me.wallsV;
+    const h = me.wallsH;
+    // Update button text
+    controls.wallBtn.innerHTML = `<i class="fa-solid fa-block-brick"></i> Duvar <span style="font-size:0.8em; opacity:0.8; margin-left:4px;">(${v} | ${h})</span>`;
+}
+
+function generatePowerupPos() {
+    return {
+        x: Math.floor(Math.random() * GRID_COLS),
+        y: Math.floor(Math.random() * 4) + 3 // Rows 3-6
+    };
 }
 
 function toggleOrientation() {
@@ -196,15 +218,30 @@ function handleCellClick(x, y, e) {
     let orientation = STATE.wallOrientation;
 
     // Calculate precise target
-    if (actionType === 'wall' && e) {
+    if ((actionType === 'wall' || actionType === 'destroy') && e) {
         const rect = e.target.getBoundingClientRect();
         const offsetX = e.clientX - rect.left;
         const offsetY = e.clientY - rect.top;
 
-        if (orientation === 'vertical') {
-            if (offsetX < rect.width / 2) targetX = x - 1;
+        if (actionType === 'destroy') {
+            // Heuristic: Destroy wall connected to this cell. 
+            // We need to know WHICH wall.
+            if (offsetX > rect.width / 2) {
+                orientation = 'vertical';
+            } else if (offsetY > rect.height / 2) {
+                orientation = 'horizontal';
+            } else {
+                // Fallback: target neighbor's wall?
+                if (offsetX < rect.width / 2) { targetX = x - 1; orientation = 'vertical'; }
+                if (offsetY < rect.height / 2) { targetY = y - 1; orientation = 'horizontal'; }
+            }
         } else {
-            if (offsetY < rect.height / 2) targetY = y - 1;
+            // Placement Logic
+            if (orientation === 'vertical') {
+                if (offsetX < rect.width / 2) targetX = x - 1;
+            } else {
+                if (offsetY < rect.height / 2) targetY = y - 1;
+            }
         }
     }
 
@@ -216,6 +253,12 @@ function handleCellClick(x, y, e) {
     if (actionType === 'move') {
         tryMove(targetX, targetY);
         clearPendingAction();
+        return;
+    }
+
+    // DESTROY: Instant
+    if (actionType === 'destroy') {
+        tryDestroyWall(targetX, targetY, orientation);
         return;
     }
 
@@ -233,27 +276,14 @@ function handleCellClick(x, y, e) {
     } else {
         // SELECT (First Tap)
         let isValid = false;
-        if (actionType === 'move') {
-            // Basic Check: Is adjacent?
-            const me = STATE.players[STATE.playerId];
-            const dx = Math.abs(targetX - me.x);
-            const dy = Math.abs(targetY - me.y);
-            // Also Check if blocked
-            if (dx + dy === 1 && !isBlockedByWall(me.x, me.y, targetX, targetY)) {
-                isValid = true;
-                // Check collision with opponent
-                const opp = STATE.players[STATE.playerId === 'p1' ? 'p2' : 'p1'];
-                if (targetX === opp.x && targetY === opp.y) isValid = false;
-            }
-        } else {
-            // Check wall bounds
-            isValid = true;
-            if (orientation === 'vertical' && targetX >= GRID_COLS - 1) isValid = false;
-            if (orientation === 'horizontal' && targetY >= GRID_ROWS - 1) isValid = false;
-            // Check overlap
-            const exists = STATE.walls.some(w => w.x === targetX && w.y === targetY && w.type === orientation);
-            if (exists) isValid = false;
-        }
+
+        // Check wall bounds
+        isValid = true;
+        if (orientation === 'vertical' && targetX >= GRID_COLS - 1) isValid = false;
+        if (orientation === 'horizontal' && targetY >= GRID_ROWS - 1) isValid = false;
+        // Check overlap (Rule: Must NOT exist for placement)
+        const exists = STATE.walls.some(w => w.x === targetX && w.y === targetY && w.type === orientation);
+        if (exists) isValid = false;
 
         if (isValid) {
             STATE.pendingAction = {
@@ -275,6 +305,18 @@ function clearPendingAction() {
     renderBoard();
 }
 
+function tryDestroyWall(x, y, orientation) {
+    // Find wall
+    const wallIndex = STATE.walls.findIndex(w => w.x === x && w.y === y && w.type === orientation);
+    if (wallIndex === -1) {
+        showToast("Burada kırılabilecek duvar yok!", "error");
+        return;
+    }
+
+    // Send to Firebase
+    sendMove({ type: 'destroy', x, y, orientation });
+}
+
 function tryMove(targetX, targetY) {
     const me = STATE.players[STATE.playerId];
 
@@ -294,35 +336,29 @@ function tryMove(targetX, targetY) {
         return;
     }
 
+    // Check Powerup
+    let pickupPowerup = false;
+    if (STATE.powerup && targetX === STATE.powerup.x && targetY === STATE.powerup.y) {
+        pickupPowerup = true;
+        showToast("Duvar Kırıcı Alındı! 💣", "success");
+    }
+
     // Update Local State for feedback (optimistic)
     updatePlayerPos(STATE.playerId, targetX, targetY);
 
     // Send to Firebase
-    sendMove({ type: 'move', from: { x: me.x, y: me.y }, to: { x: targetX, y: targetY } });
+    sendMove({ type: 'move', from: { x: me.x, y: me.y }, to: { x: targetX, y: targetY }, pickupPowerup });
 }
 
 function isBlockedByWall(x1, y1, x2, y2) {
-    // Logic: check if a wall exists between these two cells
-    // Wall types: 'v' (vertical, right of cell), 'h' (horizontal, bottom of cell)
-    // IMPORTANT: Simplification -> Wall coords are typically defined by top-left cell reference
-
     for (const w of STATE.walls) {
         if (w.type === 'vertical') {
-            // Blocks horizontal movement between (w.x, w.y) and (w.x+1, w.y)
-            // AND ALSO (w.x, w.y+1) and (w.x+1, w.y+1) because walls are 2 units long usually in Quoridor
-            // BUT for this simplified 10x10 grid instructions say "gridler arası duvar".
-            // Let's assume walls are 1 unit length for higher granularity or 2?
-            // User prompt: "gridler arası dikey ya da yatay bir duvar örer". Not specifying length.
-            // I will implement 1-unit walls for simplicity on mobile 10x10.
-
-            // Vertical wall at w.x, w.y blocks passage between (w.x, w.y) and (w.x+1, w.y)
             if (y1 === w.y && y2 === w.y) { // Moving on same row
                 if ((x1 === w.x && x2 === w.x + 1) || (x1 === w.x + 1 && x2 === w.x)) {
                     return true;
                 }
             }
         } else { // Horizontal
-            // Blocks vertical movement between (w.x, w.y) and (w.x, w.y+1)
             if (x1 === w.x && x2 === w.x) { // Moving on same col
                 if ((y1 === w.y && y2 === w.y + 1) || (y1 === w.y + 1 && y2 === w.y)) {
                     return true;
@@ -334,9 +370,21 @@ function isBlockedByWall(x1, y1, x2, y2) {
 }
 
 function tryPlaceWall(x, y) {
-    // Wall logic: Place wall at current cell's Right (vertical) or Bottom (horizontal)
-    // Limits: Cannot go out of bounds
+    // Check limits
+    const me = STATE.players[STATE.playerId];
+    if (STATE.wallOrientation === 'vertical') {
+        if (me.wallsV <= 0) {
+            showToast("Dikey duvar hakkın bitti!", "error");
+            return;
+        }
+    } else {
+        if (me.wallsH <= 0) {
+            showToast("Yatay duvar hakkın bitti!", "error");
+            return;
+        }
+    }
 
+    // Limits: Cannot go out of bounds
     if (STATE.wallOrientation === 'vertical') {
         if (x >= GRID_COLS - 1) return; // Cannot place right of last col
     } else {
@@ -344,14 +392,11 @@ function tryPlaceWall(x, y) {
     }
 
     // Check if wall exists
-    // Check if wall exists
     const exists = STATE.walls.some(w => w.x === x && w.y === y && w.type === STATE.wallOrientation);
     if (exists) {
         showToast("Burada zaten duvar var!", "error");
         return;
     }
-
-    // TODO: Path validation (A* or BFS check if goal is reachable) - skipping for MVP speed
 
     // Send
     sendMove({ type: 'wall', x, y, orientation: STATE.wallOrientation });
@@ -362,11 +407,6 @@ function updatePlayerPos(pid, x, y) {
     STATE.players[pid].y = y;
     renderBoard();
     checkWin();
-}
-
-function addWall(x, y, type) {
-    STATE.walls.push({ x, y, type });
-    renderBoard();
 }
 
 function checkWin() {
@@ -386,11 +426,10 @@ function endGame(winnerId) {
 // --- RENDERING ---
 function renderBoard() {
     // Clear moving elements (players) and walls from cells
-    document.querySelectorAll('.player, .wall').forEach(e => e.remove());
+    document.querySelectorAll('.player, .wall, .powerup-icon').forEach(e => e.remove());
     document.querySelectorAll('.cell').forEach(c => {
         c.classList.remove('valid-move');
         c.classList.remove('pending-move');
-        // Clear any leftover children if necessary, but we are removing by selector above
     });
 
     // Render Players
@@ -402,10 +441,26 @@ function renderBoard() {
         const cell = document.querySelector(`.cell[data-x="${w.x}"][data-y="${w.y}"]`);
         if (cell) {
             const wall = document.createElement('div');
-            wall.className = `wall ${w.type}`;
+            wall.className = `wall ${w.type} ${w.owner || ''}`;
             cell.appendChild(wall);
         }
     });
+
+    // Render Powerup
+    if (STATE.powerup) {
+        const cell = document.querySelector(`.cell[data-x="${STATE.powerup.x}"][data-y="${STATE.powerup.y}"]`);
+        if (cell) {
+            const bomb = document.createElement('div');
+            bomb.innerHTML = '<i class="fa-solid fa-bomb" style="color: #ef4444; font-size: 1.2rem; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));"></i>';
+            bomb.style.position = 'absolute';
+            bomb.style.top = '50%';
+            bomb.style.left = '50%';
+            bomb.style.transform = 'translate(-50%, -50%)';
+            bomb.style.zIndex = '8';
+            bomb.className = 'powerup-icon';
+            cell.appendChild(bomb);
+        }
+    }
 
     // Render Pending Action (Selection)
     if (STATE.pendingAction) {
@@ -418,7 +473,6 @@ function renderBoard() {
                 cell.appendChild(wall);
             }
         } else if (STATE.pendingAction.type === 'move') {
-            // Maybe highlight the cell differently?
             const pa = STATE.pendingAction;
             const cell = document.querySelector(`.cell[data-x="${pa.x}"][data-y="${pa.y}"]`);
             if (cell) cell.classList.add('pending-move');
@@ -470,37 +524,35 @@ function resetRoom() {
 
     // Reset to initial state
     const initialState = {
-        p1: { x: Math.floor(GRID_COLS / 2), y: 0, wallsLeft: 10 },
-        p2: { x: Math.floor(GRID_COLS / 2), y: GRID_ROWS - 1, wallsLeft: 10 },
-        walls: []
+        p1: { x: Math.floor(GRID_COLS / 2), y: 0, wallsV: 5, wallsH: 5, hasPowerup: false },
+        p2: { x: Math.floor(GRID_COLS / 2), y: GRID_ROWS - 1, wallsV: 5, wallsH: 5, hasPowerup: false },
+        walls: [],
+        powerup: generatePowerupPos()
     };
 
     const roomRef = ref(db, 'rooms/' + STATE.roomId);
     update(roomRef, {
         turn: 'p1',
         boardState: initialState
-        // We don't change status, it remains 'active'
     });
 
-    // Local update will happen via listener, but we can force screen
     showScreen('game');
 }
 
 function createRoom() {
-    // Generate Room ID (random 4 chars)
     const roomId = Math.random().toString(36).substring(2, 6).toUpperCase();
     const username = document.getElementById('username-input').value || 'P1';
 
-    // Set initial state
     const roomRef = ref(db, 'rooms/' + roomId);
     set(roomRef, {
         p1: username,
         turn: 'p1',
         status: 'waiting',
         boardState: {
-            p1: { x: Math.floor(GRID_COLS / 2), y: 0 },
-            p2: { x: Math.floor(GRID_COLS / 2), y: GRID_ROWS - 1 },
-            walls: []
+            p1: { x: Math.floor(GRID_COLS / 2), y: 0, wallsV: 5, wallsH: 5 },
+            p2: { x: Math.floor(GRID_COLS / 2), y: GRID_ROWS - 1, wallsV: 5, wallsH: 5 },
+            walls: [],
+            powerup: generatePowerupPos()
         }
     });
 
@@ -510,7 +562,6 @@ function createRoom() {
     showScreen('waiting');
     document.getElementById('display-room-code').textContent = roomId;
 
-    // Listen for join
     onValue(roomRef, (snapshot) => {
         const data = snapshot.val();
         if (data && data.p2) {
@@ -530,7 +581,6 @@ function joinRoom() {
         if (snapshot.exists()) {
             const data = snapshot.val();
             if (!data.p2) {
-                // Join
                 update(roomRef, {
                     p2: username,
                     status: 'active'
@@ -564,17 +614,22 @@ function listenGameLoop() {
 
         // Sync State
         if (data.boardState) {
-            STATE.players.p1 = data.boardState.p1;
-            STATE.players.p2 = data.boardState.p2;
+            STATE.players.p1 = data.boardState.p1 || STATE.players.p1;
+            STATE.players.p2 = data.boardState.p2 || STATE.players.p2;
+
+            // Migration/Safety: Ensure wallsV/wallsH exist
+            ['p1', 'p2'].forEach(pid => {
+                if (typeof STATE.players[pid].wallsV === 'undefined') STATE.players[pid].wallsV = 5;
+                if (typeof STATE.players[pid].wallsH === 'undefined') STATE.players[pid].wallsH = 5;
+                if (typeof STATE.players[pid].hasPowerup === 'undefined') STATE.players[pid].hasPowerup = false;
+            });
+
             STATE.walls = data.boardState.walls || [];
+            STATE.powerup = data.boardState.powerup || null;
         }
 
         if (data.status === 'active') {
-            // Logic to auto-restart if we are in Game Over but game is continuing
             if (!STATE.gameActive && document.getElementById('game-over-screen').classList.contains('active')) {
-                // Check if it looks like a new game (no walls, start pos)?
-                // Or just trust 'active' status + board update?
-                // Simple: If board seems reset (no walls), pull back to game.
                 if (STATE.walls.length === 0) {
                     STATE.gameActive = true;
                     showScreen('game');
@@ -586,28 +641,39 @@ function listenGameLoop() {
 
         updateTurnUI(data.turn);
         renderBoard();
-        checkWin(); // Check remote win
+        checkWin();
     });
 }
 
 function sendMove(moveData) {
-    // moveData: { type: 'move'|'wall', ... }
     const roomRef = ref(db, 'rooms/' + STATE.roomId);
     const nextTurn = STATE.playerId === 'p1' ? 'p2' : 'p1';
 
-    // Apply move locally to object before sending to ensure format
     const updates = {};
     updates['/turn'] = nextTurn;
 
     if (moveData.type === 'move') {
-        updates[`/boardState/${STATE.playerId}`] = moveData.to;
+        const pid = STATE.playerId;
+        updates[`/boardState/${pid}/x`] = moveData.to.x;
+        updates[`/boardState/${pid}/y`] = moveData.to.y;
+
+        if (moveData.pickupPowerup) {
+            updates[`/boardState/powerup`] = null;
+            updates[`/boardState/${pid}/hasPowerup`] = true;
+        }
     } else if (moveData.type === 'wall') {
-        // Retrieve current walls, push new one
-        // Firebase list handling is tricky with loose indices, better read-modify-write or use push keys.
-        // For simple sync, we'll read current STATE walls (which are synced) + new one
-        // But concurrency might be an issue. However, it's turn based.
-        const newWalls = [...STATE.walls, { x: moveData.x, y: moveData.y, type: moveData.orientation }];
+        const newWalls = [...STATE.walls, { x: moveData.x, y: moveData.y, type: moveData.orientation, owner: STATE.playerId }];
         updates['/boardState/walls'] = newWalls;
+
+        const pState = STATE.players[STATE.playerId];
+        const newPState = { ...pState };
+        if (moveData.orientation === 'vertical') newPState.wallsV--;
+        else newPState.wallsH--;
+        updates[`/boardState/${STATE.playerId}`] = newPState;
+    } else if (moveData.type === 'destroy') {
+        const newWalls = STATE.walls.filter(w => !(w.x === moveData.x && w.y === moveData.y && w.type === moveData.orientation));
+        updates['/boardState/walls'] = newWalls;
+        updates[`/boardState/${STATE.playerId}/hasPowerup`] = false;
     }
 
     update(roomRef, updates);
@@ -632,7 +698,16 @@ function updateTurnUI(turn) {
     p1Info.classList.toggle('active-turn', turn === 'p1');
     p2Info.classList.toggle('active-turn', turn === 'p2');
 
-    renderBoard(); // Re-render to update move highlights
+    // Enable/Disable Powerup Btn
+    if (STATE.players[STATE.playerId] && STATE.players[STATE.playerId].hasPowerup) {
+        controls.powerupBtn.classList.remove('hidden');
+    } else {
+        controls.powerupBtn.classList.add('hidden');
+        if (STATE.mode === 'destroy') setMode('move');
+    }
+
+    updateWallCounts();
+    renderBoard();
 }
 
 function showScreen(name) {
@@ -642,3 +717,4 @@ function showScreen(name) {
 
 // Start
 init();
+

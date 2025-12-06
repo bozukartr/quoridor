@@ -394,7 +394,7 @@ header {
     backdrop-filter: blur(20px);
     border-radius: var(--radius-lg);
     border: 1px solid var(--border);
-    margin-top: max(16px, env(safe-area-inset-top));
+    margin-top: max(10px, env(safe-area-inset-top));
     box-shadow: var(--shadow-md);
     z-index: 50;
     flex-shrink: 0;
@@ -576,6 +576,16 @@ header {
     50% {
         opacity: 0.5;
     }
+}
+
+.wall.p1 {
+    background: linear-gradient(135deg, #5b7cff 0%, #4a6bef 100%);
+    box-shadow: 0 0 8px rgba(91, 124, 255, 0.4);
+}
+
+.wall.p2 {
+    background: linear-gradient(135deg, #ff6b9d 0%, #ef5a8c 100%);
+    box-shadow: 0 0 8px rgba(255, 107, 157, 0.4);
 }
 
 /* ============================================
