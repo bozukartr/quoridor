@@ -30,8 +30,9 @@ try {
 
 // --- GAME STATE ---
 // --- GAME STATE ---
+// --- GAME STATE ---
 const GRID_COLS = 7;
-const GRID_ROWS = 10;
+const GRID_ROWS = 9;
 const STATE = {
     roomId: null,
     playerId: null, // 'p1' (Blue) or 'p2' (Red)
@@ -40,11 +41,11 @@ const STATE = {
     wallOrientation: 'vertical', // 'vertical' or 'horizontal'
     board: [],
     players: {
-        p1: { x: Math.floor(GRID_COLS / 2), y: 0, wallsV: 5, wallsH: 5, hasPowerup: false },
-        p2: { x: Math.floor(GRID_COLS / 2), y: GRID_ROWS - 1, wallsV: 5, wallsH: 5, hasPowerup: false }
+        p1: { x: 3, y: 0, wallsLeft: 10, hasPowerup: false },
+        p2: { x: 3, y: 8, wallsLeft: 10, hasPowerup: false }
     },
     powerup: null, // {x, y}
-    walls: [], // Array of {x, y, type}
+    walls: [], // Array of {x, y, type} (x,y = Gap Coordinates)
     gameActive: false,
     pendingAction: null // { type: 'move'|'wall', x, y, orientation? }
 };
@@ -191,10 +192,9 @@ function setMode(mode) {
 function updateWallCounts() {
     if (!STATE.playerId) return;
     const me = STATE.players[STATE.playerId];
-    const v = me.wallsV;
-    const h = me.wallsH;
+    const left = me.wallsLeft !== undefined ? me.wallsLeft : 10;
     // Update button text
-    controls.wallBtn.innerHTML = `<i class="fa-solid fa-block-brick"></i> Duvar <span style="font-size:0.8em; opacity:0.8; margin-left:4px;">(${v} | ${h})</span>`;
+    controls.wallBtn.innerHTML = `<i class="fa-solid fa-block-brick"></i> Duvar <span style="font-size:0.9em; opacity:0.8; margin-left:4px;">(${left})</span>`;
 }
 
 function generatePowerupPos() {
@@ -217,31 +217,24 @@ function handleCellClick(x, y, e) {
     let targetY = y;
     let orientation = STATE.wallOrientation;
 
-    // Calculate precise target
-    if ((actionType === 'wall' || actionType === 'destroy') && e) {
+    // Calculate precise target (Nearest Gap)
+    if (e && (actionType === 'wall' || actionType === 'destroy')) {
         const rect = e.target.getBoundingClientRect();
         const offsetX = e.clientX - rect.left;
         const offsetY = e.clientY - rect.top;
 
+        // Closest Gap Logic:
+        // Left Half -> Gap Left (x-1). Right Half -> Gap Right (x).
+        // Top Half -> Gap Top (y-1). Bottom Half -> Gap Bottom (y).
+        if (offsetX < rect.width / 2) targetX = x - 1;
+        if (offsetY < rect.height / 2) targetY = y - 1;
+
         if (actionType === 'destroy') {
-            // Heuristic: Destroy wall connected to this cell. 
-            // We need to know WHICH wall.
-            if (offsetX > rect.width / 2) {
-                orientation = 'vertical';
-            } else if (offsetY > rect.height / 2) {
-                orientation = 'horizontal';
-            } else {
-                // Fallback: target neighbor's wall?
-                if (offsetX < rect.width / 2) { targetX = x - 1; orientation = 'vertical'; }
-                if (offsetY < rect.height / 2) { targetY = y - 1; orientation = 'horizontal'; }
-            }
-        } else {
-            // Placement Logic
-            if (orientation === 'vertical') {
-                if (offsetX < rect.width / 2) targetX = x - 1;
-            } else {
-                if (offsetY < rect.height / 2) targetY = y - 1;
-            }
+            // Guess orientation based on edge proximity
+            const dx = Math.abs(offsetX / rect.width - 0.5);
+            const dy = Math.abs(offsetY / rect.height - 0.5);
+            if (dx > dy) orientation = 'vertical';
+            else orientation = 'horizontal';
         }
     }
 
@@ -306,36 +299,39 @@ function clearPendingAction() {
 }
 
 function tryDestroyWall(x, y, orientation) {
-    // Find wall
-    const wallIndex = STATE.walls.findIndex(w => w.x === x && w.y === y && w.type === orientation);
-    if (wallIndex === -1) {
+    // Find absolute match first
+    let wall = STATE.walls.find(w => w.x === x && w.y === y && w.type === orientation);
+
+    // If not found, check neighbors that might span here
+    if (!wall) {
+        if (orientation === 'horizontal') {
+            // Check start at x-1
+            wall = STATE.walls.find(w => w.x === x - 1 && w.y === y && w.type === 'horizontal');
+        } else {
+            // Check start at y-1
+            wall = STATE.walls.find(w => w.type === 'vertical' && w.x === x && w.y === y - 1);
+        }
+    }
+
+    if (!wall) {
         showToast("Burada kırılabilecek duvar yok!", "error");
         return;
     }
 
-    // Send to Firebase
-    sendMove({ type: 'destroy', x, y, orientation });
+    // Send destroy for the FOUND wall (use its x,y)
+    sendMove({ type: 'destroy', x: wall.x, y: wall.y, orientation: wall.type });
 }
 
 function tryMove(targetX, targetY) {
     const me = STATE.players[STATE.playerId];
 
-    // Check adjacency
-    const dx = Math.abs(targetX - me.x);
-    const dy = Math.abs(targetY - me.y);
-    if (dx + dy !== 1) return; // Not adjacent
+    // Jump / Diagonal Validation
+    const validMoves = getValidMoves(me.x, me.y);
+    const isValid = validMoves.some(m => m.x === targetX && m.y === targetY);
 
-    // Check collision with opponent (cannot occupy same square)
-    const opponentId = STATE.playerId === 'p1' ? 'p2' : 'p1';
-    const opponent = STATE.players[opponentId];
-    if (targetX === opponent.x && targetY === opponent.y) return;
+    if (!isValid) return;
 
-    // Check walls blocking path
-    if (isBlockedByWall(me.x, me.y, targetX, targetY)) {
-        showToast("Yol kapalı!", "error");
-        return;
-    }
-
+    // Execute Move
     // Check Powerup
     let pickupPowerup = false;
     if (STATE.powerup && targetX === STATE.powerup.x && targetY === STATE.powerup.y) {
@@ -343,63 +339,145 @@ function tryMove(targetX, targetY) {
         showToast("Duvar Kırıcı Alındı! 💣", "success");
     }
 
-    // Update Local State for feedback (optimistic)
+    // Optimistic Update
     updatePlayerPos(STATE.playerId, targetX, targetY);
 
-    // Send to Firebase
-    sendMove({ type: 'move', from: { x: me.x, y: me.y }, to: { x: targetX, y: targetY }, pickupPowerup });
+    // Send
+    sendMove({ type: 'move', to: { x: targetX, y: targetY }, pickupPowerup });
 }
 
-function isBlockedByWall(x1, y1, x2, y2) {
-    for (const w of STATE.walls) {
-        if (w.type === 'vertical') {
-            if (y1 === w.y && y2 === w.y) { // Moving on same row
-                if ((x1 === w.x && x2 === w.x + 1) || (x1 === w.x + 1 && x2 === w.x)) {
-                    return true;
-                }
-            }
-        } else { // Horizontal
-            if (x1 === w.x && x2 === w.x) { // Moving on same col
-                if ((y1 === w.y && y2 === w.y + 1) || (y1 === w.y + 1 && y2 === w.y)) {
-                    return true;
+function getValidMoves(cx, cy) {
+    const moves = [];
+    const dirs = [[0, -1], [0, 1], [-1, 0], [1, 0]]; // N, S, W, E
+    const opp = STATE.players[STATE.playerId === 'p1' ? 'p2' : 'p1'];
+
+    dirs.forEach(d => {
+        const nx = cx + d[0];
+        const ny = cy + d[1];
+
+        // 1. Basic Adjacency Check
+        if (nx >= 0 && nx < GRID_COLS && ny >= 0 && ny < GRID_ROWS) {
+            if (!isBlockedByWall(cx, cy, nx, ny)) {
+                // 2. Occupancy Check
+                if (nx === opp.x && ny === opp.y) {
+                    // JUMP LOGIC
+                    const jx = nx + d[0];
+                    const jy = ny + d[1];
+
+                    // Try Straight Jump
+                    if (jx >= 0 && jx < GRID_COLS && jy >= 0 && jy < GRID_ROWS && !isBlockedByWall(nx, ny, jx, jy)) {
+                        moves.push({ x: jx, y: jy });
+                    } else {
+                        // Blocked -> Try Diagonals
+                        // If moving N/S (dx=0), try W/E. If W/E (dy=0), try N/S.
+                        const diags = d[0] === 0 ? [[-1, 0], [1, 0]] : [[0, -1], [0, 1]];
+                        diags.forEach(diag => {
+                            const dx_final = nx + diag[0];
+                            const dy_final = ny + diag[1];
+                            if (dx_final >= 0 && dx_final < GRID_COLS && dy_final >= 0 && dy_final < GRID_ROWS) {
+                                if (!isBlockedByWall(nx, ny, dx_final, dy_final)) {
+                                    moves.push({ x: dx_final, y: dy_final });
+                                }
+                            }
+                        });
+                    }
+                } else {
+                    // Empty Cell -> Valid Move
+                    moves.push({ x: nx, y: ny });
                 }
             }
         }
+    });
+    return moves;
+}
+
+function isBlockedByWall(x1, y1, x2, y2) {
+    // Determine movement direction
+    // Vertical interactions blocked by Horizontal Walls
+    if (x1 === x2) {
+        const row = Math.min(y1, y2); // Gap Row
+        // Blocked if H-Wall at (x1, row) OR (x1-1, row)
+        return STATE.walls.some(w => w.type === 'horizontal' && w.y === row && (w.x === x1 || w.x === x1 - 1));
+    }
+    // Horizontal interactions blocked by Vertical Walls
+    if (y1 === y2) {
+        const col = Math.min(x1, x2); // Gap Col
+        // Blocked if V-Wall at (col, y1) OR (col, y1-1)
+        return STATE.walls.some(w => w.type === 'vertical' && w.x === col && (w.y === y1 || w.y === y1 - 1));
     }
     return false;
 }
 
 function tryPlaceWall(x, y) {
-    // Check limits
     const me = STATE.players[STATE.playerId];
-    if (STATE.wallOrientation === 'vertical') {
-        if (me.wallsV <= 0) {
-            showToast("Dikey duvar hakkın bitti!", "error");
-            return;
-        }
-    } else {
-        if (me.wallsH <= 0) {
-            showToast("Yatay duvar hakkın bitti!", "error");
-            return;
-        }
+    if (me.wallsLeft <= 0) {
+        showToast("Duvar hakkın bitti!", "error");
+        return;
     }
 
-    // Limits: Cannot go out of bounds
-    if (STATE.wallOrientation === 'vertical') {
-        if (x >= GRID_COLS - 1) return; // Cannot place right of last col
-    } else {
-        if (y >= GRID_ROWS - 1) return; // Cannot place bottom of last row
+    // Limits check
+    // V-Wall (x,y) valid for x in 0..5, y in 0..7
+    // H-Wall (x,y) valid for x in 0..5, y in 0..7
+    // Note: GRID_COLS=7 (0..6), GapCols=6 (0..5). GRID_ROWS=9 (0..8), GapRows=8 (0..7).
+    if (x < 0 || x > 5 || y < 0 || y > 7) return;
+
+    // Overlap Check
+    const isOverlap = STATE.walls.some(w => {
+        if (w.x === x && w.y === y && w.type === STATE.wallOrientation) return true;
+        if (STATE.wallOrientation === 'horizontal') {
+            if (w.type === 'horizontal' && w.y === y && (w.x === x - 1 || w.x === x + 1)) return true;
+            if (w.type === 'vertical' && w.x === x && w.y === y) return true;
+        } else {
+            if (w.type === 'vertical' && w.x === x && (w.y === y - 1 || w.y === y + 1)) return true;
+            if (w.type === 'horizontal' && w.x === x && w.y === y) return true;
+        }
+        return false;
+    });
+
+    if (isOverlap) {
+        showToast("Geçersiz konum!", "error");
+        return;
     }
 
-    // Check if wall exists
-    const exists = STATE.walls.some(w => w.x === x && w.y === y && w.type === STATE.wallOrientation);
-    if (exists) {
-        showToast("Burada zaten duvar var!", "error");
+    // --- PATH VALIDATION ---
+    const tempWall = { x, y, type: STATE.wallOrientation };
+    STATE.walls.push(tempWall);
+    const p1CanReach = hasPath(STATE.players.p1.x, STATE.players.p1.y, GRID_ROWS - 1);
+    const p2CanReach = hasPath(STATE.players.p2.x, STATE.players.p2.y, 0);
+    STATE.walls.pop();
+
+    if (!p1CanReach || !p2CanReach) {
+        showToast("Yolu tamamen kapatamazsın!", "error");
         return;
     }
 
     // Send
     sendMove({ type: 'wall', x, y, orientation: STATE.wallOrientation });
+}
+
+function hasPath(sx, sy, targetY) {
+    const visited = new Set();
+    const queue = [{ x: sx, y: sy }];
+    visited.add(`${sx},${sy}`);
+    // Standard orthogonal neighbors
+    const dirs = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+
+    while (queue.length > 0) {
+        const curr = queue.shift();
+        if (curr.y === targetY) return true;
+
+        for (const d of dirs) {
+            const nx = curr.x + d[0];
+            const ny = curr.y + d[1];
+            if (nx >= 0 && nx < GRID_COLS && ny >= 0 && ny < GRID_ROWS) {
+                if (!visited.has(`${nx},${ny}`) && !isBlockedByWall(curr.x, curr.y, nx, ny)) {
+                    visited.add(`${nx},${ny}`);
+                    queue.push({ x: nx, y: ny });
+                }
+            }
+        }
+    }
+    return false;
 }
 
 function updatePlayerPos(pid, x, y) {
@@ -423,30 +501,86 @@ function endGame(winnerId) {
     showScreen('gameOver');
 }
 
-// --- RENDERING ---
 function renderBoard() {
-    // Clear moving elements (players) and walls from cells
-    document.querySelectorAll('.player, .wall, .powerup-icon').forEach(e => e.remove());
+    // 1. Clear moving elements (players) and walls (absolute)
+    gridBoard.querySelectorAll('.player, .wall, .powerup-icon').forEach(e => e.remove());
     document.querySelectorAll('.cell').forEach(c => {
         c.classList.remove('valid-move');
         c.classList.remove('pending-move');
+        c.innerHTML = ''; // Clear anything inside cells just in case
     });
 
-    // Render Players
+    // 2. Metric Helper (Get current cell size dynamically)
+    const cellEl = gridBoard.querySelector('.cell');
+    if (!cellEl) return;
+    const cellSize = cellEl.offsetWidth;
+    // Assume gap is from CSS variable default or calculated
+    let gap = 3; // Fallback
+    const computedStyle = getComputedStyle(gridBoard);
+    if (computedStyle.gap) gap = parseFloat(computedStyle.gap);
+
+    // 3. Render Helper
+    const placeVisualWall = (x, y, type, classes = []) => {
+        const w = document.createElement('div');
+        w.className = `wall ${type} ${classes.join(' ')}`;
+
+        // Coords: Gap X matches Left of Col X+1? No.
+        // Gap 0 is between Col 0 and 1.
+        // Grid: [Cell0] [Gap0] [Cell1] ...
+        // Left of Gap x = (x+1)*Cell + x*Gap
+        // Center of Gap x = Left + Gap/2
+
+        let top, left;
+
+        if (type === 'vertical') {
+            // Centered on Gap X (horizontal axis)
+            // Spans Row Y to Y+1 (vertical axis)
+
+            // X-Pos (Left): (x + 1) * (cellSize + gap) - gap/2 - thickness/2 (handled by CSS center transform usually)
+            // Let's position LEFT at the start of the gap?
+            // Left of Gap X = (x+1) * cellSize + x * gap.
+            // But my CSS uses transform: translateX(-50%). So I should position 'left' at the CENTER of the gap.
+            // Center of Gap X = ((x+1) * cellSize + x * gap) + gap/2
+            // Simplifies to: (x + 1) * (cellSize + gap) - gap/2
+
+            left = (x + 1) * (cellSize + gap) - gap / 2;
+
+            // Y-Pos (Top): Top of Row Y.
+            // Top of Row Y = y * (cellSize + gap)
+            top = y * (cellSize + gap);
+        } else {
+            // Horizontal
+            // Centered on Gap Y (vertical axis)
+            // Left of Col X (horizontal axis)
+
+            // Y-Pos (Top): Center of Gap Y.
+            top = (y + 1) * (cellSize + gap) - gap / 2;
+
+            // X-Pos (Left): Left of Col X.
+            left = x * (cellSize + gap);
+        }
+
+        w.style.left = `${left}px`;
+        w.style.top = `${top}px`;
+        gridBoard.appendChild(w);
+    };
+
+    // 4. Render Actual Walls
+    STATE.walls.forEach(w => {
+        placeVisualWall(w.x, w.y, w.type, [w.owner || '']);
+    });
+
+    // 5. Render Pending Wall
+    if (STATE.pendingAction && STATE.pendingAction.type === 'wall') {
+        const pa = STATE.pendingAction;
+        placeVisualWall(pa.x, pa.y, pa.orientation, ['pending']);
+    }
+
+    // 6. Render Players
     renderPlayer('p1');
     renderPlayer('p2');
 
-    // Render Walls
-    STATE.walls.forEach(w => {
-        const cell = document.querySelector(`.cell[data-x="${w.x}"][data-y="${w.y}"]`);
-        if (cell) {
-            const wall = document.createElement('div');
-            wall.className = `wall ${w.type} ${w.owner || ''}`;
-            cell.appendChild(wall);
-        }
-    });
-
-    // Render Powerup
+    // 7. Render Powerup
     if (STATE.powerup) {
         const cell = document.querySelector(`.cell[data-x="${STATE.powerup.x}"][data-y="${STATE.powerup.y}"]`);
         if (cell) {
@@ -459,23 +593,6 @@ function renderBoard() {
             bomb.style.zIndex = '8';
             bomb.className = 'powerup-icon';
             cell.appendChild(bomb);
-        }
-    }
-
-    // Render Pending Action (Selection)
-    if (STATE.pendingAction) {
-        if (STATE.pendingAction.type === 'wall') {
-            const pa = STATE.pendingAction;
-            const cell = document.querySelector(`.cell[data-x="${pa.x}"][data-y="${pa.y}"]`);
-            if (cell) {
-                const wall = document.createElement('div');
-                wall.className = `wall ${pa.orientation} pending`;
-                cell.appendChild(wall);
-            }
-        } else if (STATE.pendingAction.type === 'move') {
-            const pa = STATE.pendingAction;
-            const cell = document.querySelector(`.cell[data-x="${pa.x}"][data-y="${pa.y}"]`);
-            if (cell) cell.classList.add('pending-move');
         }
     }
 
@@ -496,23 +613,16 @@ function renderValidMoves() {
     if (!STATE.isMyTurn || STATE.mode !== 'move') return;
 
     const me = STATE.players[STATE.playerId];
-    const moves = [
-        { x: 0, y: -1 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 1, y: 0 }
-    ];
+    const moves = getValidMoves(me.x, me.y);
 
-    moves.forEach(dir => {
-        const nx = me.x + dir.x;
-        const ny = me.y + dir.y;
+    moves.forEach(m => {
+        const cell = document.querySelector(`.cell[data-x="${m.x}"][data-y="${m.y}"]`);
+        if (cell) cell.classList.add('valid-move');
 
-        if (nx >= 0 && nx < GRID_COLS && ny >= 0 && ny < GRID_ROWS) {
-            if (!isBlockedByWall(me.x, me.y, nx, ny)) {
-                // Check opponent collision
-                const opp = STATE.players[STATE.playerId === 'p1' ? 'p2' : 'p1'];
-                if (nx !== opp.x || ny !== opp.y) {
-                    const cell = document.querySelector(`.cell[data-x="${nx}"][data-y="${ny}"]`);
-                    if (cell) cell.classList.add('valid-move');
-                }
-            }
+        // Pending Move Highlight (if selected via multi-step, though movement is instant now)
+        if (STATE.pendingAction && STATE.pendingAction.type === 'move' &&
+            STATE.pendingAction.x === m.x && STATE.pendingAction.y === m.y) {
+            cell.classList.add('pending-move');
         }
     });
 }
@@ -524,8 +634,8 @@ function resetRoom() {
 
     // Reset to initial state
     const initialState = {
-        p1: { x: Math.floor(GRID_COLS / 2), y: 0, wallsV: 5, wallsH: 5, hasPowerup: false },
-        p2: { x: Math.floor(GRID_COLS / 2), y: GRID_ROWS - 1, wallsV: 5, wallsH: 5, hasPowerup: false },
+        p1: { x: Math.floor(GRID_COLS / 2), y: 0, wallsLeft: 10, hasPowerup: false },
+        p2: { x: Math.floor(GRID_COLS / 2), y: GRID_ROWS - 1, wallsLeft: 10, hasPowerup: false },
         walls: [],
         powerup: generatePowerupPos()
     };
@@ -549,8 +659,8 @@ function createRoom() {
         turn: 'p1',
         status: 'waiting',
         boardState: {
-            p1: { x: Math.floor(GRID_COLS / 2), y: 0, wallsV: 5, wallsH: 5 },
-            p2: { x: Math.floor(GRID_COLS / 2), y: GRID_ROWS - 1, wallsV: 5, wallsH: 5 },
+            p1: { x: Math.floor(GRID_COLS / 2), y: 0, wallsLeft: 10 },
+            p2: { x: Math.floor(GRID_COLS / 2), y: GRID_ROWS - 1, wallsLeft: 10 },
             walls: [],
             powerup: generatePowerupPos()
         }
@@ -667,8 +777,10 @@ function sendMove(moveData) {
 
         const pState = STATE.players[STATE.playerId];
         const newPState = { ...pState };
-        if (moveData.orientation === 'vertical') newPState.wallsV--;
-        else newPState.wallsH--;
+        // Valid decrement for wallsLeft
+        if (newPState.wallsLeft === undefined) newPState.wallsLeft = 10;
+        newPState.wallsLeft--;
+
         updates[`/boardState/${STATE.playerId}`] = newPState;
     } else if (moveData.type === 'destroy') {
         const newWalls = STATE.walls.filter(w => !(w.x === moveData.x && w.y === moveData.y && w.type === moveData.orientation));
@@ -683,20 +795,16 @@ function sendMove(moveData) {
 
 function updateTurnUI(turn) {
     STATE.isMyTurn = (turn === STATE.playerId);
-    const statusDiv = document.getElementById('game-status');
+
+    // Update Avatar Highlights
     const p1Info = document.getElementById('p1-info');
     const p2Info = document.getElementById('p2-info');
 
-    if (STATE.isMyTurn) {
-        statusDiv.textContent = "SIRA SENDE";
-        statusDiv.style.background = "rgba(59, 130, 246, 0.4)";
-    } else {
-        statusDiv.textContent = "RAKİP BEKLENİYOR";
-        statusDiv.style.background = "rgba(255, 255, 255, 0.1)";
-    }
+    p1Info.classList.toggle('active', turn === 'p1');
+    p2Info.classList.toggle('active', turn === 'p2');
 
-    p1Info.classList.toggle('active-turn', turn === 'p1');
-    p2Info.classList.toggle('active-turn', turn === 'p2');
+    // Turn Indicator Text (Optional: Use simpler status or just rely on avatar)
+    // We keep the "VS" badge static.
 
     // Enable/Disable Powerup Btn
     if (STATE.players[STATE.playerId] && STATE.players[STATE.playerId].hasPowerup) {

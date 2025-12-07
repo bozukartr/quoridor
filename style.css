@@ -449,10 +449,12 @@ header {
 .grid-board {
     display: grid;
     grid-template-columns: repeat(7, var(--cell-size));
-    grid-template-rows: repeat(10, var(--cell-size));
+    grid-template-rows: repeat(9, var(--cell-size));
+    /* 7x9 */
     gap: var(--grid-gap);
     position: relative;
     user-select: none;
+    margin: 0 auto;
 }
 
 .cell {
@@ -526,26 +528,24 @@ header {
 .wall {
     position: absolute;
     background: linear-gradient(135deg, #ffffff 0%, #e2e8f0 100%);
-    border-radius: 3px;
-    z-index: 5;
+    border-radius: 4px;
+    z-index: 20;
+    /* Above text/cells */
     pointer-events: none;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+    /* Let clicks pass to cells */
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+    transform-origin: center;
+    transition: background 0.2s, opacity 0.2s;
 }
 
 .wall.vertical {
     width: var(--wall-thickness);
-    height: calc(100% + var(--grid-gap) * 2);
-    top: 50%;
-    right: calc(var(--grid-gap) / -2 - var(--wall-thickness) / 2);
-    transform: translateY(-50%);
+    height: calc(var(--cell-size) * 2 + var(--grid-gap));
 }
 
 .wall.horizontal {
     height: var(--wall-thickness);
-    width: calc(100% + var(--grid-gap) * 2);
-    left: 50%;
-    bottom: calc(var(--grid-gap) / -2 - var(--wall-thickness) / 2);
-    transform: translateX(-50%);
+    width: calc(var(--cell-size) * 2 + var(--grid-gap));
 }
 
 .wall.preview {
@@ -705,3 +705,12 @@ header {
         opacity: 0.8;
     }
 }
+/* Enhanced Header UI */
+.game-status { font-weight: 800; color: var(--text-secondary); font-size: 1.2rem; letter-spacing: 2px; opacity: 0.3; }
+.player-info { opacity: 0.4; transition: all 0.3s ease; border-radius: 8px; padding: 4px 8px; }
+.player-info.active { opacity: 1; background: rgba(255, 255, 255, 0.05); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1); }
+.player-info.active .avatar { transform: scale(1.1); }
+.player-info.p1.active .avatar { box-shadow: 0 0 15px var(--primary); }
+.player-info.p2.active .avatar { box-shadow: 0 0 15px var(--accent); }
+
+.vs-badge { font-size: 1.5rem; font-weight: 900; color: rgba(255, 255, 255, 0.1); text-shadow: 0 1px 0 rgba(255,255,255,0.05); }
