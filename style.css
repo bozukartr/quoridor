@@ -769,7 +769,7 @@ header {
     display: flex;
     justify-content: center;
     gap: 15px;
-    margin-top: 20px;
+    margin-top: 5px;
     width: 100%;
 }
 
@@ -834,4 +834,159 @@ header {
 #game-screen {
     justify-content: flex-start !important;
     padding-top: 60px;
+}
+
+/* GAME OVER & ANIMATIONS */
+@keyframes popIn {
+    0% {
+        transform: scale(0.5);
+        opacity: 0;
+        filter: blur(10px);
+    }
+
+    50% {
+        transform: scale(1.1);
+    }
+
+    70% {
+        transform: scale(0.95);
+    }
+
+    100% {
+        transform: scale(1);
+        opacity: 1;
+        filter: blur(0);
+    }
+}
+
+@keyframes glowPulse {
+    0% {
+        text-shadow: 0 0 20px currentColor;
+    }
+
+    50% {
+        text-shadow: 0 0 40px currentColor, 0 0 10px white;
+    }
+
+    100% {
+        text-shadow: 0 0 20px currentColor;
+    }
+}
+
+@keyframes fadeInUp {
+    from {
+        transform: translateY(20px);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+#game-over-screen {
+    background: transparent !important;
+    overflow: hidden;
+}
+
+.result-backdrop {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(15px);
+    -webkit-backdrop-filter: blur(15px);
+    z-index: 1;
+    animation: fadeIn 0.5s ease-out;
+}
+
+#confetti-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 5;
+}
+
+.result-container {
+    position: relative;
+    z-index: 10;
+    text-align: center;
+    padding: 30px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 15px;
+}
+
+.result-icon {
+    font-size: 5rem;
+    margin-bottom: 10px;
+    animation: popIn 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.result-title {
+    font-size: 4rem;
+    font-weight: 900;
+    margin: 0;
+    letter-spacing: -2px;
+    line-height: 1;
+    animation: popIn 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) 0.2s forwards;
+    opacity: 0;
+    background-size: 200% auto;
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.result-message {
+    color: var(--text-secondary);
+    font-size: 1.2rem;
+    margin: 0;
+    animation: fadeInUp 0.5s ease 0.6s forwards;
+    opacity: 0;
+}
+
+.result-actions {
+    display: flex;
+    gap: 15px;
+    margin-top: 20px;
+    animation: fadeInUp 0.5s ease 0.8s forwards;
+    opacity: 0;
+}
+
+/* THEMES */
+.victory .result-icon {
+    color: #ffd700;
+    text-shadow: 0 0 30px rgba(255, 215, 0, 0.6);
+}
+
+.victory .result-title {
+    background-image: linear-gradient(135deg, #ffd700 0%, #ffffff 50%, #f59e0b 100%);
+    animation: popIn 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) 0.2s forwards, glowPulse 3s infinite 2s;
+    background-clip: text;
+}
+
+.victory .result-backdrop {
+    background: rgba(20, 60, 40, 0.8);
+}
+
+.defeat .result-icon {
+    color: #ef4444;
+    filter: grayscale(0.5);
+}
+
+.defeat .result-title {
+    background-image: linear-gradient(135deg, #9ca3af 0%, #ffffff 50%, #ef4444 100%);
+    background-clip: text;
+}
+
+.defeat .result-backdrop {
+    background: rgba(30, 20, 20, 0.85);
+    backdrop-filter: blur(15px) grayscale(1);
+    -webkit-backdrop-filter: blur(15px) grayscale(1);
 }

@@ -115,9 +115,18 @@
 
         <!-- Game Over Screen -->
         <div id="game-over-screen" class="screen">
-            <h1 id="winner-text">Kazandın!</h1>
-            <button id="rematch-btn" class="btn primary">Yeni Oyun</button>
-            <button id="restart-btn" class="btn secondary">Ana Menü</button>
+            <div class="result-backdrop"></div>
+            <canvas id="confetti-canvas"></canvas>
+            <div class="result-container">
+                <div class="result-icon">Build Icon Here</div>
+                <h1 class="result-title">KAZANDIN!</h1>
+                <p class="result-message">Muhteşem bir strateji ile rakibi alt ettin.</p>
+                <div class="result-actions">
+                    <button id="rematch-btn" class="btn primary"><i class="fa-solid fa-rotate-right"></i> Tekrar
+                        Oyna</button>
+                    <button id="restart-btn" class="btn secondary"><i class="fa-solid fa-house"></i> Ana Menü</button>
+                </div>
+            </div>
         </div>
     </div>
 

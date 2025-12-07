@@ -44,7 +44,7 @@ const STATE = {
         p1: { x: 3, y: 0, wallsLeft: 10, hasPowerup: false },
         p2: { x: 3, y: 8, wallsLeft: 10, hasPowerup: false }
     },
-    powerup: null, // {x, y}
+    powerups: [], // Array of {x, y, type}
     walls: [], // Array of {x, y, type} (x,y = Gap Coordinates)
     gameActive: false,
     pendingAction: null // { type: 'move'|'wall', x, y, orientation? }
@@ -260,14 +260,32 @@ function updateWallCounts() {
 const POWERUPS = ['destroy', 'ghost', 'freeze', 'wall'];
 
 function generatePowerup() {
-    // Random Type
-    const type = POWERUPS[Math.floor(Math.random() * POWERUPS.length)];
-    // Random Pos (Anywhere)
-    return {
-        x: Math.floor(Math.random() * GRID_COLS),
-        y: Math.floor(Math.random() * GRID_ROWS),
-        type: type
-    };
+    let type, x, y, attempts = 0;
+    // Try to ensure valid placement
+    while (attempts < 50) {
+        type = POWERUPS[Math.floor(Math.random() * POWERUPS.length)];
+        x = Math.floor(Math.random() * GRID_COLS);
+        y = Math.floor(Math.random() * GRID_ROWS);
+        attempts++;
+
+        // 1. Avoid Players
+        if (STATE.playerId) { // Access safe
+            // Actually STATE.players is always defined
+        }
+        const p1 = STATE.players.p1;
+        const p2 = STATE.players.p2;
+        if ((x === p1.x && y === p1.y) || (x === p2.x && y === p2.y)) continue;
+
+        // 2. Avoid Start Zones (Rows 0,1 and 7,8 near center)
+        // Just avoid extreme top/bottom center
+        if ((y <= 1 || y >= GRID_ROWS - 2) && (x >= 2 && x <= 4)) continue;
+
+        // 3. Avoid Intersection with existing
+        if (STATE.powerups.some(p => p.x === x && p.y === y)) continue;
+
+        return { x, y, type };
+    }
+    return null; // Failed to place
 }
 
 function toggleOrientation() {
@@ -405,12 +423,15 @@ function tryMove(targetX, targetY) {
 
     // Execute Move
     // Check Powerup
-    let pickupPowerup = false;
-    if (STATE.powerup && targetX === STATE.powerup.x && targetY === STATE.powerup.y) {
-        pickupPowerup = true;
-        const type = STATE.powerup.type;
+    // Check Powerup
+    let pickupPowerupIndex = -1;
+    const pIndex = STATE.powerups.findIndex(p => p.x === targetX && p.y === targetY);
+
+    if (pIndex !== -1) {
+        pickupPowerupIndex = pIndex;
+        const p = STATE.powerups[pIndex];
         const names = { destroy: 'Duvar Kırıcı 💣', ghost: 'Hayalet Modu 👻', freeze: 'Dondurucu ❄️', wall: '+1 Duvar 🧱' };
-        showToast(`${names[type] || 'Powerup'} Alındı!`, "success");
+        showToast(`${names[p.type] || 'Powerup'} Alındı!`, "success");
     }
 
     // Optimistic Update
@@ -418,7 +439,7 @@ function tryMove(targetX, targetY) {
 
     // Send
     const consumePowerup = STATE.ghostMode;
-    sendMove({ type: 'move', to: { x: targetX, y: targetY }, pickupPowerup, consumePowerup });
+    sendMove({ type: 'move', to: { x: targetX, y: targetY }, pickupPowerupIndex, consumePowerup });
 
     if (STATE.ghostMode) {
         STATE.ghostMode = false;
@@ -582,10 +603,115 @@ function checkWin() {
     if (p2.y === 0) endGame('p2');
 }
 
+// --- VISUAL EFFECTS ---
+let confettiLoop;
+
+function startConfetti() {
+    const canvas = document.getElementById('confetti-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    const particles = [];
+    const colors = ['#ffd700', '#ffeb3b', '#f59e0b', '#ffffff', '#eab308'];
+
+    function createParticle() {
+        return {
+            x: Math.random() * canvas.width,
+            y: -10,
+            color: colors[Math.floor(Math.random() * colors.length)],
+            size: Math.random() * 8 + 4,
+            speedY: Math.random() * 3 + 2,
+            speedX: Math.random() * 2 - 1,
+            rotation: Math.random() * 360,
+            rotationSpeed: Math.random() * 10 - 5
+        };
+    }
+
+    // Initial Burst
+    for (let i = 0; i < 100; i++) particles.push(createParticle());
+
+    function loop() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Spawn
+        if (particles.length < 200) particles.push(createParticle());
+
+        particles.forEach((p, index) => {
+            p.y += p.speedY;
+            p.x += p.speedX;
+            p.rotation += p.rotationSpeed;
+
+            ctx.save();
+            ctx.translate(p.x, p.y);
+            ctx.rotate(p.rotation * Math.PI / 180);
+            ctx.fillStyle = p.color;
+            ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+            ctx.restore();
+
+            if (p.y > canvas.height) {
+                particles[index] = createParticle();
+            }
+        });
+
+        confettiLoop = requestAnimationFrame(loop);
+    }
+
+    // Stop previous if any
+    if (confettiLoop) cancelAnimationFrame(confettiLoop);
+    loop();
+}
+
+function stopConfetti() {
+    if (confettiLoop) {
+        cancelAnimationFrame(confettiLoop);
+        confettiLoop = null;
+    }
+    const canvas = document.getElementById('confetti-canvas');
+    if (canvas) {
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+}
+
 function endGame(winnerId) {
     STATE.gameActive = false;
-    document.getElementById('winner-text').textContent = winnerId === STATE.playerId ? "KAZANDIN!" : "KAYBETTİN...";
+    stopConfetti();
+
+    // Determine Result
+    const isWin = (winnerId === STATE.playerId);
+
+    // Select Elements
+    const screen = document.getElementById('game-over-screen');
+    const title = screen.querySelector('.result-title');
+    const msg = screen.querySelector('.result-message');
+    const icon = screen.querySelector('.result-icon');
+
+    if (title && msg && icon) {
+        // Update Classes
+        screen.classList.remove('victory', 'defeat');
+        screen.classList.add(isWin ? 'victory' : 'defeat');
+
+        // Update Content
+        title.textContent = isWin ? "ZAFER!" : "YENİLGİ...";
+        msg.textContent = isWin
+            ? "Muhteşem bir strateji ile rakibi alt ettin."
+            : "Bu sefer şans rakipten yanaydı. Pes etme!";
+        icon.innerHTML = isWin ? '<i class="fa-solid fa-trophy"></i>' : '<i class="fa-solid fa-skull"></i>';
+
+        if (isWin) {
+            startConfetti();
+        }
+    }
+
     showScreen('gameOver');
+}
+
+function showScreen(name) {
+    if (name !== 'gameOver') stopConfetti();
+    Object.values(screens).forEach(s => s.classList.remove('active'));
+    screens[name].classList.add('active');
 }
 
 function renderBoard() {
@@ -668,27 +794,30 @@ function renderBoard() {
     renderPlayer('p2');
 
     // 7. Render Powerup
-    if (STATE.powerup) {
-        const cell = document.querySelector(`.cell[data-x="${STATE.powerup.x}"][data-y="${STATE.powerup.y}"]`);
-        if (cell) {
-            const types = {
-                destroy: { icon: 'fa-bomb', color: '#ef4444' },
-                ghost: { icon: 'fa-ghost', color: '#a855f7' },
-                freeze: { icon: 'fa-snowflake', color: '#0ea5e9' },
-                wall: { icon: 'fa-plus-square', color: '#f97316' }
-            };
-            const p = types[STATE.powerup.type] || types.destroy;
+    // 7. Render Powerups
+    if (STATE.powerups) {
+        const types = {
+            destroy: { icon: 'fa-bomb', color: '#ef4444' },
+            ghost: { icon: 'fa-ghost', color: '#a855f7' },
+            freeze: { icon: 'fa-snowflake', color: '#0ea5e9' },
+            wall: { icon: 'fa-plus-square', color: '#f97316' }
+        };
 
-            const el = document.createElement('div');
-            el.innerHTML = `<i class="fa-solid ${p.icon}" style="color: ${p.color}; font-size: 1.2rem; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));"></i>`;
-            el.style.position = 'absolute';
-            el.style.top = '50%';
-            el.style.left = '50%';
-            el.style.transform = 'translate(-50%, -50%)';
-            el.style.zIndex = '8';
-            el.className = 'powerup-icon';
-            cell.appendChild(el);
-        }
+        STATE.powerups.forEach(pObj => {
+            const cell = document.querySelector(`.cell[data-x="${pObj.x}"][data-y="${pObj.y}"]`);
+            if (cell) {
+                const p = types[pObj.type] || types.destroy;
+                const el = document.createElement('div');
+                el.innerHTML = `<i class="fa-solid ${p.icon}" style="color: ${p.color}; font-size: 1.2rem; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));"></i>`;
+                el.style.position = 'absolute';
+                el.style.top = '50%';
+                el.style.left = '50%';
+                el.style.transform = 'translate(-50%, -50%)';
+                el.style.zIndex = '8';
+                el.className = 'powerup-icon';
+                cell.appendChild(el);
+            }
+        });
     }
 
     renderValidMoves();
@@ -732,12 +861,12 @@ function resetRoom() {
         p1: { x: Math.floor(GRID_COLS / 2), y: 0, wallsLeft: 10, inventory: { destroy: 0, ghost: 0, freeze: 0, wall: 0 } },
         p2: { x: Math.floor(GRID_COLS / 2), y: GRID_ROWS - 1, wallsLeft: 10, inventory: { destroy: 0, ghost: 0, freeze: 0, wall: 0 } },
         walls: [],
-        powerup: generatePowerup()
+        powerups: []
     };
 
     const roomRef = ref(db, 'rooms/' + STATE.roomId);
     update(roomRef, {
-        turn: 'p1',
+        turn: Math.random() < 0.5 ? 'p1' : 'p2',
         boardState: initialState
     });
 
@@ -751,13 +880,13 @@ function createRoom() {
     const roomRef = ref(db, 'rooms/' + roomId);
     set(roomRef, {
         p1: username,
-        turn: 'p1',
+        turn: Math.random() < 0.5 ? 'p1' : 'p2',
         status: 'waiting',
         boardState: {
             p1: { x: Math.floor(GRID_COLS / 2), y: 0, wallsLeft: 10, inventory: { destroy: 0, ghost: 0, freeze: 0, wall: 0 } },
             p2: { x: Math.floor(GRID_COLS / 2), y: GRID_ROWS - 1, wallsLeft: 10, inventory: { destroy: 0, ghost: 0, freeze: 0, wall: 0 } },
             walls: [],
-            powerup: generatePowerup()
+            powerups: []
         }
     });
 
@@ -848,7 +977,7 @@ function listenGameLoop() {
             });
 
             STATE.walls = data.boardState.walls || [];
-            STATE.powerup = data.boardState.powerup || null;
+            STATE.powerups = data.boardState.powerups || [];
             STATE.frozenPlayer = data.boardState.frozenPlayer || null;
         }
 
@@ -872,32 +1001,28 @@ function sendMove(moveData, endTurn = true) {
     const roomRef = ref(db, 'rooms/' + STATE.roomId);
     const nextTurn = STATE.playerId === 'p1' ? 'p2' : 'p1';
 
+    // Current State Copies
+    const currentPowerups = [...(STATE.powerups || [])];
     const updates = {};
-    if (endTurn) {
-        updates['/turn'] = nextTurn;
-
-        if (STATE.frozenPlayer === STATE.playerId) {
-            updates['/boardState/frozenPlayer'] = null;
-        }
-
-        if (!STATE.powerup && Math.random() < 0.1) {
-            updates['/boardState/powerup'] = generatePowerup();
-        }
-    }
-
     const pid = STATE.playerId;
-    // Default inventory fallback
-    const myInv = STATE.players[pid].inventory || { destroy: 0, ghost: 0, freeze: 0, wall: 0 };
     const invPath = `/boardState/${pid}/inventory`;
+    const myInv = STATE.players[pid].inventory || { destroy: 0, ghost: 0, freeze: 0, wall: 0 };
 
     if (moveData.type === 'move') {
-        updates[`/boardState/${pid}/x`] = moveData.to.x;
-        updates[`/boardState/${pid}/y`] = moveData.to.y;
+        const pPath = `/boardState/${pid}`;
+        updates[`${pPath}/x`] = moveData.to.x;
+        updates[`${pPath}/y`] = moveData.to.y;
 
-        if (moveData.pickupPowerup && STATE.powerup) {
-            updates[`/boardState/powerup`] = null;
-            const type = STATE.powerup.type;
-            updates[`${invPath}/${type}`] = (myInv[type] || 0) + 1;
+        // Pickup Powerup
+        if (moveData.pickupPowerupIndex !== undefined && moveData.pickupPowerupIndex !== -1) {
+            const idx = moveData.pickupPowerupIndex;
+            if (currentPowerups[idx]) {
+                const type = currentPowerups[idx].type;
+                // Remove from array (splice) - Firebase handles this by re-indexing 0,1,2... if replaced wholly
+                currentPowerups.splice(idx, 1);
+                updates['/boardState/powerups'] = currentPowerups;
+                updates[`${invPath}/${type}`] = (myInv[type] || 0) + 1;
+            }
         }
 
         if (moveData.consumePowerup) {
@@ -907,8 +1032,7 @@ function sendMove(moveData, endTurn = true) {
         const newWalls = [...STATE.walls, { x: moveData.x, y: moveData.y, type: moveData.orientation, owner: STATE.playerId }];
         updates['/boardState/walls'] = newWalls;
 
-        const pState = STATE.players[pid];
-        const currentWalls = (pState.wallsLeft === undefined) ? 10 : pState.wallsLeft;
+        const currentWalls = (STATE.players[pid].wallsLeft === undefined) ? 10 : STATE.players[pid].wallsLeft;
         updates[`/boardState/${pid}/wallsLeft`] = currentWalls - 1;
     } else if (moveData.type === 'destroy') {
         const newWalls = STATE.walls.filter(w => !(w.x === moveData.x && w.y === moveData.y && w.type === moveData.orientation));
@@ -919,10 +1043,26 @@ function sendMove(moveData, endTurn = true) {
             updates['/boardState/frozenPlayer'] = nextTurn;
             updates[`${invPath}/freeze`] = Math.max(0, (myInv.freeze || 0) - 1);
         } else if (moveData.powerupType === 'wall') {
-            const pState = STATE.players[pid];
-            const currentWalls = (pState.wallsLeft === undefined) ? 10 : pState.wallsLeft;
+            const currentWalls = (STATE.players[pid].wallsLeft === undefined) ? 10 : STATE.players[pid].wallsLeft;
             updates[`/boardState/${pid}/wallsLeft`] = currentWalls + 1;
             updates[`${invPath}/wall`] = Math.max(0, (myInv.wall || 0) - 1);
+        }
+    }
+
+    if (endTurn) {
+        updates['/turn'] = nextTurn;
+
+        if (STATE.frozenPlayer === STATE.playerId) {
+            updates['/boardState/frozenPlayer'] = null;
+        }
+
+        // Spawn Logic: Max 3, 20% Chance
+        if (currentPowerups.length < 3 && Math.random() < 0.2) {
+            const newP = generatePowerup();
+            if (newP) {
+                currentPowerups.push(newP);
+                updates['/boardState/powerups'] = currentPowerups;
+            }
         }
     }
 
@@ -964,10 +1104,7 @@ function updateTurnUI(turn) {
     renderBoard();
 }
 
-function showScreen(name) {
-    Object.values(screens).forEach(s => s.classList.remove('active'));
-    screens[name].classList.add('active');
-}
+
 
 // Start
 init();
