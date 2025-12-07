@@ -259,6 +259,59 @@ function updateWallCounts() {
 
 const POWERUPS = ['destroy', 'ghost', 'freeze', 'wall'];
 
+// --- SOUND MANAGER ---
+class SoundManager {
+    constructor() {
+        this.sounds = {};
+        this.volume = 0.5;
+        this.assets = ['click', 'error', 'lose', 'move', 'powerup_collect', 'powerup_spawn', 'turn_start', 'wall_place', 'wall_rotate', 'win'];
+        this.init();
+    }
+
+    init() {
+        this.assets.forEach(name => {
+            this.sounds[name] = new Audio(`assets/sounds/${name}.mp3`);
+            this.sounds[name].preload = 'auto'; // Ensure fast playback
+        });
+
+        const slider = document.getElementById('volume-slider');
+        if (slider) {
+            slider.addEventListener('input', (e) => this.setVolume(e.target.value));
+            slider.addEventListener('mousedown', (e) => e.stopPropagation()); // Prevent game clicks
+        }
+
+        // Global Click Sound for Buttons
+        document.addEventListener('click', (e) => {
+            if (e.target.tagName === 'BUTTON' || e.target.closest('button')) {
+                this.play('click');
+            }
+        });
+    }
+
+    setVolume(v) {
+        this.volume = v;
+        Object.values(this.sounds).forEach(s => s.volume = v);
+
+        // Update Icon
+        const icon = document.getElementById('volume-icon');
+        if (icon) {
+            if (v == 0) icon.className = 'fa-solid fa-volume-mute';
+            else if (v < 0.5) icon.className = 'fa-solid fa-volume-low';
+            else icon.className = 'fa-solid fa-volume-high';
+        }
+    }
+
+    play(name) {
+        const s = this.sounds[name];
+        if (s) {
+            s.currentTime = 0;
+            s.volume = this.volume;
+            s.play().catch(() => { }); // Ignore auto-play errors
+        }
+    }
+}
+const sounds = new SoundManager();
+
 function generatePowerup() {
     let type, x, y, attempts = 0;
     // Try to ensure valid placement
@@ -291,6 +344,7 @@ function generatePowerup() {
 function toggleOrientation() {
     STATE.wallOrientation = STATE.wallOrientation === 'vertical' ? 'horizontal' : 'vertical';
     controls.orientationSpan.textContent = STATE.wallOrientation === 'vertical' ? 'Dikey' : 'Yatay';
+    sounds.play('wall_rotate');
 }
 
 function handleCellClick(x, y, e) {
@@ -432,6 +486,9 @@ function tryMove(targetX, targetY) {
         const p = STATE.powerups[pIndex];
         const names = { destroy: 'Duvar Kırıcı 💣', ghost: 'Hayalet Modu 👻', freeze: 'Dondurucu ❄️', wall: '+1 Duvar 🧱' };
         showToast(`${names[p.type] || 'Powerup'} Alındı!`, "success");
+        sounds.play('powerup_collect');
+    } else {
+        sounds.play('move');
     }
 
     // Optimistic Update
@@ -561,6 +618,7 @@ function tryPlaceWall(x, y) {
 
     // Send
     sendMove({ type: 'wall', x, y, orientation: STATE.wallOrientation });
+    sounds.play('wall_place');
 }
 
 function hasPath(sx, sy, targetY) {
@@ -702,6 +760,9 @@ function endGame(winnerId) {
 
         if (isWin) {
             startConfetti();
+            sounds.play('win');
+        } else {
+            sounds.play('lose');
         }
     }
 
@@ -969,6 +1030,13 @@ function listenGameLoop() {
             STATE.players.p1 = data.boardState.p1 || STATE.players.p1;
             STATE.players.p2 = data.boardState.p2 || STATE.players.p2;
 
+            // Powerup Spawn Sound
+            const newPowerups = data.boardState.powerups || [];
+            if (STATE.powerups && newPowerups.length > STATE.powerups.length && STATE.gameActive) {
+                sounds.play('powerup_spawn');
+            }
+            STATE.powerups = newPowerups;
+
             // Migration/Safety: Ensure wallsV/wallsH exist
             ['p1', 'p2'].forEach(pid => {
                 if (typeof STATE.players[pid].wallsV === 'undefined') STATE.players[pid].wallsV = 5;
@@ -1082,6 +1150,8 @@ function updateTurnUI(turn) {
 
     // Inventory Badge Update
     const me = STATE.players[STATE.playerId];
+    if (turn === STATE.playerId) sounds.play('turn_start');
+
     if (me && me.inventory) {
         const types = ['destroy', 'ghost', 'freeze', 'wall'];
         types.forEach(type => {
