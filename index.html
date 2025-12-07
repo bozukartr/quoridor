@@ -65,6 +65,8 @@
             <div class="loader"></div>
             <p>Oda Kodu: <span id="display-room-code" class="highlight"></span></p>
             <p>Rakip bekleniyor...</p>
+            <button id="cancel-room-btn" class="btn secondary"
+                style="margin-top: 16px; padding: 8px 16px; font-size: 0.9rem;">İptal Et</button>
         </div>
 
         <!-- Game Screen -->
@@ -93,8 +95,21 @@
                 <button id="wall-mode-btn" class="action-btn"><i class="fa-solid fa-block-brick"></i> Duvar</button>
                 <button id="wall-rotate-btn" class="action-btn hidden"><i class="fa-solid fa-rotate"></i> <span
                         id="wall-orientation">Dikey</span></button>
-                <button id="powerup-btn" class="action-btn hidden" style="color: #ef4444;"><i
-                        class="fa-solid fa-bomb"></i></button>
+            </div>
+
+            <div class="powerup-controls">
+                <button id="btn-destroy" class="inventory-btn" title="Duvar Kırıcı">
+                    <i class="fa-solid fa-bomb"></i> <span class="badge">0</span>
+                </button>
+                <button id="btn-ghost" class="inventory-btn" title="Hayalet Modu">
+                    <i class="fa-solid fa-ghost"></i> <span class="badge">0</span>
+                </button>
+                <button id="btn-freeze" class="inventory-btn" title="Dondurucu">
+                    <i class="fa-solid fa-snowflake"></i> <span class="badge">0</span>
+                </button>
+                <button id="btn-wall" class="inventory-btn" title="+1 Duvar">
+                    <i class="fa-solid fa-plus-square"></i> <span class="badge">0</span>
+                </button>
             </div>
         </div>
 
