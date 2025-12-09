@@ -277,7 +277,8 @@ async function inviteFriend(friendUid, friendName) {
 
     try {
         // 1. Create Game Room
-        const roomId = 'room_' + Date.now(); // Simple ID
+        // Use 6-char random ID for compatibility with joinRoom (which UPPERCASES input)
+        const roomId = Math.random().toString(36).substring(2, 8).toUpperCase();
         // (Optional: Initialize room state headers here if needed)
 
         // 2. Send Invite
