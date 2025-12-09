@@ -344,23 +344,45 @@ const sounds = new SoundManager();
 
 function generatePowerup() {
     let type, x, y, attempts = 0;
+
+    // Weighted Selection: 4-5 turns freq
+    const weights = {
+        wall: 0.30,        // Most Common
+        destroy: 0.20,
+        ghost: 0.10,
+        freeze: 0.10,
+        return: 0.07,
+        chaos: 0.10,
+        double_turn: 0.06,
+        hourglass: 0.10,
+        star: 0.05         // Rarest
+    };
+
+    const rand = Math.random();
+    let sum = 0;
+    for (const key in weights) {
+        sum += weights[key];
+        if (rand < sum) {
+            type = key;
+            break;
+        }
+    }
+    // Fallback
+    if (!type) type = 'wall';
+
     // Try to ensure valid placement
     while (attempts < 50) {
-        type = POWERUPS[Math.floor(Math.random() * POWERUPS.length)];
+        // type was already selected above, do NOT overwrite it
         x = Math.floor(Math.random() * GRID_COLS);
         y = Math.floor(Math.random() * GRID_ROWS);
         attempts++;
 
         // 1. Avoid Players
-        if (STATE.playerId) { // Access safe
-            // Actually STATE.players is always defined
-        }
         const p1 = STATE.players.p1;
         const p2 = STATE.players.p2;
         if ((x === p1.x && y === p1.y) || (x === p2.x && y === p2.y)) continue;
 
         // 2. Avoid Start Zones (Rows 0,1 and 7,8 near center)
-        // Just avoid extreme top/bottom center
         if ((y <= 1 || y >= GRID_ROWS - 2) && (x >= 2 && x <= 4)) continue;
 
         // 3. Avoid Intersection with existing
@@ -538,10 +560,18 @@ function tryMove(targetX, targetY) {
             return: 'Geri Sar ↩️',
             chaos: 'Şaşırtma 🔀',
             double_turn: 'Dejavu 🔁',
-            hourglass: 'Kum Saati ⏳'
+            hourglass: 'Kum Saati ⏳',
+            star: '🌟 EFSANEVİ YILDIZ 🌟'
         };
-        showToast(`${names[p.type] || 'Powerup'} Alındı!`, "success");
-        sounds.play('powerup_collect');
+        const pName = names[p.type] || 'Powerup';
+
+        if (p.type === 'star') {
+            showToast(`🌟 EFSANEVİ! TÜM GÜÇLER EKLENDİ!`, "success");
+            sounds.play('win'); // Use win sound for legendary pickup
+        } else {
+            showToast(`${pName} Alındı!`, "success");
+            sounds.play('powerup_collect');
+        }
     } else {
         sounds.play('move');
     }
@@ -920,7 +950,8 @@ function renderBoard() {
             return: { icon: 'fa-undo', color: '#10b981' },
             chaos: { icon: 'fa-shuffle', color: '#d946ef' },
             double_turn: { icon: 'fa-repeat', color: '#eab308' },
-            hourglass: { icon: 'fa-hourglass-half', color: '#b45309' }
+            hourglass: { icon: 'fa-hourglass-half', color: '#b45309' },
+            star: { icon: 'fa-star', color: '#ffd700', class: 'legendary-pulse' }
         };
 
         STATE.powerups.forEach(pObj => {
@@ -928,13 +959,13 @@ function renderBoard() {
             if (cell) {
                 const p = types[pObj.type] || types.destroy;
                 const el = document.createElement('div');
-                el.innerHTML = `<i class="fa-solid ${p.icon}" style="color: ${p.color}; font-size: 1.2rem; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));"></i>`;
+                el.innerHTML = `<i class="fa-solid ${p.icon}" style="color: ${p.color}; font-size: 1.2rem; filter: drop-shadow(0 0 5px ${p.color});"></i>`;
                 el.style.position = 'absolute';
                 el.style.top = '50%';
                 el.style.left = '50%';
                 el.style.transform = 'translate(-50%, -50%)';
                 el.style.zIndex = '8';
-                el.className = 'powerup-icon';
+                el.className = `powerup-icon ${p.class || ''}`;
                 cell.appendChild(el);
             }
         });
@@ -1160,10 +1191,18 @@ function sendMove(moveData, endTurn = true) {
             const idx = moveData.pickupPowerupIndex;
             if (currentPowerups[idx]) {
                 const type = currentPowerups[idx].type;
-                // Remove from array (splice) - Firebase handles this by re-indexing 0,1,2... if replaced wholly
                 currentPowerups.splice(idx, 1);
                 updates['/boardState/powerups'] = currentPowerups;
-                updates[`${invPath}/${type}`] = (myInv[type] || 0) + 1;
+
+                if (type === 'star') {
+                    // Grant ALL Powerups
+                    const allTypes = ['destroy', 'ghost', 'freeze', 'wall', 'return', 'chaos', 'double_turn', 'hourglass'];
+                    allTypes.forEach(t => {
+                        updates[`${invPath}/${t}`] = (myInv[t] || 0) + 1;
+                    });
+                } else {
+                    updates[`${invPath}/${type}`] = (myInv[type] || 0) + 1;
+                }
             }
         }
 
@@ -1218,8 +1257,8 @@ function sendMove(moveData, endTurn = true) {
             updates['/boardState/frozenPlayer'] = null;
         }
 
-        // Spawn Logic: Max 3, 20% Chance
-        if (currentPowerups.length < 3 && Math.random() < 0.2) {
+        // Spawn Logic: Max 3, 22% Chance (Approx every 4-5 turns)
+        if (currentPowerups.length < 3 && Math.random() < 0.22) {
             const newP = generatePowerup();
             if (newP) {
                 currentPowerups.push(newP);
