@@ -13,6 +13,32 @@ const statRate = document.getElementById('stat-rate');
 const statFavPowerup = document.getElementById('stat-fav-powerup');
 const historyList = document.getElementById('history-list');
 
+// Auth Button Logic (Immediate Bind)
+if (authBtn) {
+    console.log("Auth Button Found, attaching listener");
+    authBtn.onclick = () => {
+        console.log("Auth Button Clicked. Current User:", auth.currentUser);
+        if (auth.currentUser) {
+            signOut(auth).then(() => {
+                alert("Çıkış yapıldı.");
+                // onAuthStateChanged will handle UI
+            }).catch((error) => {
+                console.error("Sign Out Error", error);
+            });
+        } else {
+            console.log("Attempting Sign In...");
+            signInWithPopup(auth, provider).then((result) => {
+                console.log("Sign In Success:", result.user);
+            }).catch((error) => {
+                console.error("Sign In Error", error);
+                alert("Giriş hatası: " + error.message);
+            });
+        }
+    };
+} else {
+    console.error("CRITICAL: Auth Button NOT found in DOM");
+}
+
 // Modal Elements
 const modal = document.getElementById('details-modal');
 const closeModalBtn = document.querySelector('.close-modal');
@@ -441,21 +467,4 @@ function loadHistory(uid) {
     });
 }
 
-// Auth Button Listener
-if (authBtn) {
-    authBtn.addEventListener('click', () => {
-        if (auth.currentUser) {
-            signOut(auth).then(() => {
-                // UI update handled by onAuthStateChanged
-                alert("Çıkış yapıldı.");
-            }).catch((error) => {
-                console.error("Sign Out Error", error);
-            });
-        } else {
-            signInWithPopup(auth, provider).catch((error) => {
-                console.error("Sign In Error", error);
-                alert("Giriş hatası: " + error.message);
-            });
-        }
-    });
-}
+
