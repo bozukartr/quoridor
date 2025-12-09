@@ -1,36 +1,9 @@
+// Import Shared Firebase Config
+import { app, db, auth } from "./firebase-config.js";
+import { ref, set, onValue, update, push, child, get, remove } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
-// Import Firebase functions
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getDatabase, ref, set, onValue, update, push, child, get, remove } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
-
-// --- FIREBASE CONFIGURATION ---
-// TODO: USER MUST REPLACE THIS WITH THEIR OWN CONFIG
-const firebaseConfig = {
-    apiKey: "AIzaSyBWZaETz4YMYyBUz2HFxYYMhmTTwFklw0I",
-    authDomain: "quoridor-7a872.firebaseapp.com",
-    projectId: "quoridor-7a872",
-    databaseURL: "https://quoridor-7a872-default-rtdb.firebaseio.com",
-    storageBucket: "quoridor-7a872.firebasestorage.app",
-    messagingSenderId: "464912639404",
-    appId: "1:464912639404:web:b463c13968c6d4c17fc609",
-    measurementId: "G-K3PHH67DT7"
-};
-
-// Initialize Firebase
-let app;
-let db;
-
-try {
-    app = initializeApp(firebaseConfig);
-    db = getDatabase(app);
-} catch (e) {
-    console.error("Firebase Init Error: ", e);
-    alert("Firebase Config Eksik! Lütfen script.js dosyasını düzenleyin.");
-}
-
-// --- GAME STATE ---
-// --- GAME STATE ---
-// --- GAME STATE ---
+// Game State Constants
 const GRID_COLS = 7;
 const GRID_ROWS = 9;
 const STATE = {
@@ -69,7 +42,27 @@ const controls = {
 // --- INITIALIZATION ---
 function init() {
     setupEventListeners();
+    setupTutorialListeners(); // Initialize Tutorial
     generateGrid();
+
+    // Auto-Fill Username if Logged In
+    onAuthStateChanged(auth, (user) => {
+        const userInput = document.getElementById('username-input');
+        const icon = userInput.previousElementSibling;
+
+        if (user && userInput) {
+            userInput.value = user.displayName;
+            userInput.disabled = true;
+            userInput.style.backgroundColor = 'rgba(16, 185, 129, 0.1)';
+            userInput.style.borderColor = '#10b981';
+            userInput.style.color = '#fff';
+
+            if (icon) {
+                icon.className = "fa-solid fa-check-circle";
+                icon.style.color = "#10b981";
+            }
+        }
+    });
 }
 
 function setupEventListeners() {
@@ -1101,6 +1094,7 @@ function startGame(data) {
         STATE.roomUnsubscribe = null;
     }
     STATE.gameActive = true;
+    STATE.statsRecorded = false; // Reset stats flag
     showScreen('game');
     document.getElementById('p1-name').textContent = data.p1;
     document.getElementById('p2-name').textContent = data.p2;
@@ -1148,6 +1142,13 @@ function listenGameLoop() {
 
             // Check Winner
             if (data.boardState.winner) {
+                if (!STATE.statsRecorded && auth.currentUser) {
+                    STATE.statsRecorded = true;
+                    const isWin = (data.boardState.winner === STATE.playerId);
+                    const opponentName = (STATE.playerId === 'p1') ? (data.boardState.p2 || 'Rakip') : (data.boardState.p1 || 'Rakip');
+
+                    updateUserStats(auth.currentUser.uid, isWin, opponentName);
+                }
                 endGame(data.boardState.winner);
             }
 
@@ -1428,6 +1429,183 @@ function closeModal() {
     if (el) el.classList.add('hidden');
 }
 
+// --- TUTORIAL LOGIC ---
+const TUTORIAL_CONTENT = {
+    goal: {
+        title: "Oyunun Amacı",
+        desc: "Piyonunu karşı taraftaki son sıraya ulaştıran ilk oyuncu kazanır.",
+        icon_html: '<i class="fa-solid fa-flag-checkered"></i>',
+        color: '#ffffff'
+    },
+    movement: {
+        title: "Hareket",
+        desc: "Sıra sendeyken piyonunu yatay veya dikey yönde bir kare ilerletebilirsin.",
+        icon_html: '<i class="fa-solid fa-person-walking"></i>',
+        color: '#ffffff'
+    },
+    wall: {
+        title: "Duvar Örme",
+        desc: "Rakibini yavaşlatmak için duvar koyabilirsin. Rakibin yolu tamamen kapatılamaz.",
+        icon_html: '<i class="fa-solid fa-road"></i>',
+        color: '#ffffff'
+    },
+    destroy: {
+        title: "Duvar Kırıcı",
+        desc: "Yolundaki herhangi bir duvarı yok etmeni sağlar.",
+        icon_html: '<i class="fa-solid fa-bomb"></i>',
+        color: '#ef4444'
+    },
+    ghost: {
+        title: "Hayalet Modu",
+        desc: "Bir sonraki hamlende duvarların içinden geçebilirsin.",
+        icon_html: '<i class="fa-solid fa-ghost"></i>',
+        color: '#a855f7'
+    },
+    freeze: {
+        title: "Dondurucu",
+        desc: "Rakibin bir sonraki turda duvar koymasını engeller.",
+        icon_html: '<i class="fa-solid fa-snowflake"></i>',
+        color: '#0ea5e9'
+    },
+    wall_plus: {
+        title: "+1 Duvar",
+        desc: "Envanterine ekstra bir duvar ekler.",
+        icon_html: '<i class="fa-solid fa-plus-square"></i>',
+        color: '#f97316'
+    },
+    return: {
+        title: "Geri Sar",
+        desc: "Rakibi başlangıç noktasına geri gönderir.",
+        icon_html: '<i class="fa-solid fa-undo"></i>',
+        color: '#10b981'
+    },
+    chaos: {
+        title: "Kaos",
+        desc: "Rakip bir sonraki hamlesinde rastgele bir yöne hareket eder.",
+        icon_html: '<i class="fa-solid fa-shuffle"></i>',
+        color: '#d946ef'
+    },
+    double_turn: {
+        title: "Çift Hamle",
+        desc: "Sıra tekrar sana geçer, arka arkaya iki hamle yaparsın.",
+        icon_html: '<i class="fa-solid fa-repeat"></i>',
+        color: '#eab308'
+    },
+    hourglass: {
+        title: "Kum Saati",
+        desc: "Rakibin hamle süresini bir tur için 3 saniyeye düşürür.",
+        icon_html: '<i class="fa-solid fa-hourglass-half"></i>',
+        color: '#b45309'
+    },
+    star: {
+        title: "Yıldız Gücü",
+        desc: "Çok nadirdir. Alındığında diğer tüm güçlerden birer adet kazandırır.",
+        icon_html: '<i class="fa-solid fa-star tutorial-pulse"></i>',
+        color: '#ffd700'
+    }
+};
+
+function openTutorial() {
+    const modal = document.getElementById('tutorial-modal');
+    renderTutorial();
+    // Select first item by default
+    updateTutorialInfo('movement');
+    modal.classList.remove('hidden');
+}
+
+function closeTutorial() {
+    document.getElementById('tutorial-modal').classList.add('hidden');
+}
+
+function renderTutorial() {
+    const grid = document.getElementById('tutorial-grid');
+    grid.innerHTML = ''; // Clear
+
+    Object.keys(TUTORIAL_CONTENT).forEach(key => {
+        const item = TUTORIAL_CONTENT[key];
+        const el = document.createElement('div');
+        el.className = 'tutorial-icon';
+        el.innerHTML = item.icon_html;
+        el.style.color = item.color;
+
+        if (key === 'movement') el.classList.add('selected'); // Default active styling
+
+        el.addEventListener('click', () => {
+            // Update active state
+            document.querySelectorAll('.tutorial-icon').forEach(i => i.classList.remove('selected'));
+            el.classList.add('selected');
+            updateTutorialInfo(key);
+        });
+
+        grid.appendChild(el);
+    });
+}
+
+function updateTutorialInfo(key) {
+    const item = TUTORIAL_CONTENT[key];
+    document.getElementById('tutorial-title').textContent = item.title;
+    document.getElementById('tutorial-desc').textContent = item.desc;
+
+    const preview = document.getElementById('tutorial-preview-icon');
+    preview.innerHTML = item.icon_html;
+    preview.style.color = item.color;
+}
+
+// Tutorial Event Listeners (Add to setupListeners or here safely)
+// We need to attach these once DOM is ready, init does setupEventListeners.
+// Let's modify init/setupEventListeners to call a helper or attach directly if elements exist.
+// Since this is global scope, I can't guarantee DOM ready unless I hook into setupEventListeners.
+// I'll add hook in init or modifying setupEventListeners. 
+// Easier: Just append to setupEventListeners via a replacement or add a new block. 
+// I'll add a separate helper execution inside init.
+
+function setupTutorialListeners() {
+    const openBtn = document.getElementById('open-tutorial-btn');
+    const closeBtn = document.getElementById('close-tutorial-btn');
+
+    if (openBtn) openBtn.addEventListener('click', openTutorial);
+    if (closeBtn) closeBtn.addEventListener('click', closeTutorial);
+
+    // Also close on background click
+    const modal = document.getElementById('tutorial-modal');
+    if (modal) {
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) closeTutorial();
+        });
+    }
+}
+
+// Start
 // Start
 init();
+
+
+// --- STATS LOGIC ---
+async function updateUserStats(uid, isWin, opponentName) {
+    try {
+        const statsRef = ref(db, `users/${uid}/stats`);
+        const historyRef = ref(db, `match_history/${uid}`);
+
+        // 1. Get Current Stats
+        const snapshot = await get(statsRef);
+        let stats = snapshot.val() || { wins: 0, losses: 0 };
+
+        if (isWin) stats.wins++;
+        else stats.losses++;
+
+        // 2. Update Stats
+        await set(statsRef, stats);
+
+        // 3. Add History
+        await push(historyRef, {
+            opponentName: opponentName,
+            result: isWin ? 'win' : 'loss',
+            timestamp: Date.now()
+        });
+
+        console.log("Stats Updated:", stats);
+    } catch (e) {
+        console.error("Stats Update Error:", e);
+    }
+}
 

@@ -1,0 +1,168 @@
+/* --- MOBILE MEDIA QUERIES --- */
+
+/* Ultra Small Phones (Galaxy Fold Front, etc) - Width <= 320px */
+@media (max-width: 320px) {
+    :root {
+        --cell-size: 28px;
+        --gap-size: 4px;
+    }
+
+    /* Global Text Scaling */
+    html {
+        font-size: 14px;
+    }
+
+    h3 {
+        font-size: 1.1rem;
+    }
+
+    /* Start Screen Compact */
+    .start-content {
+        padding: 0 10px;
+        margin-top: -20px;
+        /* Pull up */
+    }
+
+    .start-card {
+        padding: 16px;
+        gap: 12px;
+    }
+
+    .app-logo {
+        max-width: 120px;
+        /* Much smaller logo */
+        margin-bottom: 12px;
+    }
+
+    .input-group input {
+        padding: 8px 12px;
+        font-size: 0.9rem;
+    }
+
+    .btn {
+        padding: 10px 16px;
+        font-size: 0.9rem;
+    }
+}
+
+/* Short Screens (Landscape or small vertical) - Height <= 600px */
+@media (max-height: 600px) {
+    .app-logo {
+        max-width: 100px;
+        margin-bottom: 10px;
+    }
+
+    .start-content {
+        gap: 10px;
+    }
+
+    header {
+        margin-top: 10px;
+        margin-bottom: 5px;
+    }
+
+    #header-controls {
+        top: 5px;
+    }
+}
+
+/* Small Phones (iPhone SE, older Androids) - Width <= 380px */
+@media (max-width: 380px) {
+    :root {
+        --cell-size: 30px;
+    }
+
+    /* Adjust Header */
+    #header-controls {
+        width: 98%;
+        max-width: none;
+    }
+
+    .player-info {
+        gap: 4px;
+        font-size: 0.8rem;
+    }
+
+    .avatar {
+        width: 28px;
+        height: 28px;
+    }
+
+    .vs-badge {
+        font-size: 0.6rem;
+        width: 24px;
+        height: 24px;
+    }
+
+    /* Tutorial Modal Fix for Small Width */
+    .tutorial-content {
+        width: 95% !important;
+        padding: 16px !important;
+        min-height: auto !important;
+    }
+
+    .tutorial-grid {
+        grid-template-columns: repeat(3, 1fr) !important;
+        gap: 8px !important;
+        flex: 0 0 auto !important;
+    }
+
+    .tutorial-icon {
+        width: 40px;
+        height: 40px;
+        font-size: 1rem;
+        border-radius: 10px;
+    }
+
+    #tutorial-title {
+        font-size: 1.2rem;
+    }
+
+    #tutorial-desc {
+        font-size: 0.9rem;
+    }
+}
+
+/* Medium Phones (Standard) - Width <= 480px */
+@media (max-width: 480px) {
+    #tutorial-modal {
+        padding-top: 40px;
+        align-items: flex-start;
+    }
+
+    .tutorial-content {
+        width: 92%;
+        height: auto;
+        border-radius: 16px;
+    }
+
+    .tutorial-body {
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .tutorial-grid {
+        justify-content: center;
+        width: 100%;
+    }
+
+    .tutorial-info {
+        padding: 16px;
+        min-height: auto;
+    }
+
+    /* Ensure board fits vertically on small heights */
+    @media (max-height: 700px) {
+        .board-container {
+            transform: scale(0.85);
+            margin: -10px 0;
+        }
+    }
+
+    @media (max-height: 600px) {
+        .board-container {
+            transform: scale(0.75);
+            margin: -20px 0;
+        }
+    }
+}
