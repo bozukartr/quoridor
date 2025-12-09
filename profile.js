@@ -1,6 +1,6 @@
 import { auth, provider, db } from "./firebase-config.js";
 import { signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-import { ref, onValue, get, set, update, child } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+import { ref, onValue, get, set, update, child, onDisconnect } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
 // DOM Elements
 const authBtn = document.getElementById('auth-btn');
@@ -128,23 +128,37 @@ async function initFriendSystem(user) {
     const snapshot = await get(userRef);
     const userData = snapshot.val() || {};
 
-    // 1. Check/Generate Friend Code
-    if (userData.friendCode) {
-        myFriendCodeDisplay.textContent = userData.friendCode;
-    } else {
-        const newCode = generateFriendCode();
-        // Save to User Profile
-        await update(ref(db, `users/${user.uid}`), {
-            displayName: user.displayName,
-            photoURL: user.photoURL,
-            friendCode: newCode,
-            status: "online"
-        });
-        // Save to Global Lookup
-        await set(ref(db, `friendCodes/${newCode}`), user.uid);
+    // 1. Force Profile Update (Sync Name/Photo)
+    // Always update this to ensure friends see the latest info
+    const updates = {
+        displayName: user.displayName,
+        photoURL: user.photoURL,
+        status: "online",
+        lastOnline: Date.now()
+    };
 
+    // Generate Code if missing
+    if (!userData.friendCode) {
+        const newCode = generateFriendCode();
+        updates.friendCode = newCode;
+        await set(ref(db, `friendCodes/${newCode}`), user.uid);
         myFriendCodeDisplay.textContent = newCode;
+    } else {
+        myFriendCodeDisplay.textContent = userData.friendCode;
+        // Ensure code lookup exists (safety check)
+        const codeCheck = await get(ref(db, `friendCodes/${userData.friendCode}`));
+        if (!codeCheck.exists()) {
+            await set(ref(db, `friendCodes/${userData.friendCode}`), user.uid);
+        }
     }
+
+    await update(userRef, updates);
+
+    // 2. Presence System (Disconnect Handler)
+    onDisconnect(userRef).update({
+        status: "offline",
+        lastOnline: Date.now()
+    });
 
     // 2. Load Friends List
     loadFriends(user.uid);
