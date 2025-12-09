@@ -1085,7 +1085,7 @@ function createRoom(customId = null) {
     });
 }
 
-function joinRoom() {
+function joinRoom(retryCount = 0) {
     const roomId = document.getElementById('room-code-input').value.toUpperCase();
     const username = document.getElementById('username-input').value || 'P2';
 
@@ -1107,8 +1107,17 @@ function joinRoom() {
                 alert("Oda dolu!");
             }
         } else {
-            alert("Oda bulunamadı!");
+            // Retry Mechanism for Invites
+            if (retryCount < 5) {
+                console.log(`Room not found, retrying... (${retryCount + 1}/5)`);
+                showToast(`Oda aranıyor... (${retryCount + 1})`);
+                setTimeout(() => joinRoom(retryCount + 1), 1000);
+            } else {
+                alert("Oda bulunamadı! (Zaman aşımı)");
+            }
         }
+    }).catch(e => {
+        console.error("Join Error:", e);
     });
 }
 

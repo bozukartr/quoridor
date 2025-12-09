@@ -108,7 +108,12 @@ async function initFriendSystem(user) {
     } else {
         const newCode = generateFriendCode();
         // Save to User Profile
-        await update(ref(db, `users/${user.uid}`), { friendCode: newCode });
+        await update(ref(db, `users/${user.uid}`), {
+            displayName: user.displayName,
+            photoURL: user.photoURL,
+            friendCode: newCode,
+            status: "online"
+        });
         // Save to Global Lookup
         await set(ref(db, `friendCodes/${newCode}`), user.uid);
 
@@ -433,5 +438,24 @@ function loadHistory(uid) {
 
             historyList.appendChild(el);
         });
+    });
+}
+
+// Auth Button Listener
+if (authBtn) {
+    authBtn.addEventListener('click', () => {
+        if (auth.currentUser) {
+            signOut(auth).then(() => {
+                // UI update handled by onAuthStateChanged
+                alert("Çıkış yapıldı.");
+            }).catch((error) => {
+                console.error("Sign Out Error", error);
+            });
+        } else {
+            signInWithPopup(auth, provider).catch((error) => {
+                console.error("Sign In Error", error);
+                alert("Giriş hatası: " + error.message);
+            });
+        }
     });
 }
