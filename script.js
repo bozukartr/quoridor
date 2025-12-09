@@ -47,6 +47,7 @@ const STATE = {
     powerups: [], // Array of {x, y, type}
     walls: [], // Array of {x, y, type} (x,y = Gap Coordinates)
     gameActive: false,
+    activeEffects: { p1: { chaos: false, hourglass: false }, p2: { chaos: false, hourglass: false } }, // New State
     pendingAction: null // { type: 'move'|'wall', x, y, orientation? }
 };
 
@@ -93,6 +94,10 @@ function setupEventListeners() {
     bindPowerup('btn-ghost', 'ghost');
     bindPowerup('btn-freeze', 'freeze');
     bindPowerup('btn-wall', 'wall');
+    bindPowerup('btn-return', 'return');
+    bindPowerup('btn-chaos', 'chaos');
+    bindPowerup('btn-double_turn', 'double_turn');
+    bindPowerup('btn-hourglass', 'hourglass');
 }
 
 function activatePowerup(type) {
@@ -124,6 +129,31 @@ function activatePowerup(type) {
     } else if (type === 'wall') {
         sendMove({ type: 'activate', powerupType: 'wall' }, false);
         showToast('🧱 +1 Duvar kazandınız!');
+    } else if (type === 'return') {
+        if (confirm('Rakibi başlangıç noktasına geri göndermek istiyor musunuz? (Sıra Rakibe Geçer)')) {
+            sendMove({ type: 'activate', powerupType: 'return' }, true);
+            showToast('↩️ Rakip geri gönderildi!');
+        }
+    } else if (type === 'chaos') {
+        // "Sıra rakibe geçmeden önce kullanılmalıdır" -> Means it consumes turn? Or setup?
+        // User said: "Ters-Düz... Sıra rakibe geçmeden önce kullanılmalıdır." implies setup.
+        // Let's assume it consumes turn OR just sets effect? 
+        // "Dönek: ...sıra rakibe geçer" was explicit. Chaos wasn't.
+        // I will make Chaos consume turn to be safe/balanced, or ask user.
+        // Assuming it consumes turn as it's a powerful attack.
+        if (confirm('Rakibin bir sonraki hamlesini şaşırtmak istiyor musunuz?')) {
+            sendMove({ type: 'activate', powerupType: 'chaos' }, true);
+            showToast('🔀 Şaşırtma aktif!');
+        }
+    } else if (type === 'double_turn') {
+        // "Sıra bir kez daha kendisinde olur"
+        sendMove({ type: 'activate', powerupType: 'double_turn' }, false); // Don't end turn yet, let logic handle
+        showToast('🔁 Dejavu! Bir hamle hakkı daha!');
+    } else if (type === 'hourglass') {
+        if (confirm('Rakibi 3 saniye süreyle kısıtlamak istiyor musunuz?')) {
+            sendMove({ type: 'activate', powerupType: 'hourglass' }, true);
+            showToast('⏳ Kum Saati aktif!');
+        }
     }
 }
 
@@ -257,7 +287,7 @@ function updateWallCounts() {
     controls.wallBtn.innerHTML = `<i class="fa-solid fa-block-brick"></i> Duvar <span style="font-size:0.9em; opacity:0.8; margin-left:4px;">(${left})</span>`;
 }
 
-const POWERUPS = ['destroy', 'ghost', 'freeze', 'wall'];
+const POWERUPS = ['destroy', 'ghost', 'freeze', 'wall', 'return', 'chaos', 'double_turn', 'hourglass'];
 
 // --- SOUND MANAGER ---
 class SoundManager {
@@ -388,6 +418,22 @@ function handleCellClick(x, y, e) {
     // --- LOGIC SPLIT ---
     // MOVEMENT: Instant
     if (actionType === 'move') {
+        // Chaos Effect Logic (Client Side Check)
+        const myEffects = STATE.activeEffects && STATE.activeEffects[STATE.playerId];
+        if (myEffects && myEffects.chaos) {
+            // Redirect to random valid neighbor
+            const validMoves = getValidMoves(STATE.players[STATE.playerId].x, STATE.players[STATE.playerId].y);
+            // Filter out targetX/Y if possible to ensure "Ters-Düz" feel (not what I clicked)
+            const others = validMoves.filter(m => m.x !== targetX || m.y !== targetY);
+            const choices = others.length > 0 ? others : validMoves;
+            if (choices.length > 0) {
+                const rand = choices[Math.floor(Math.random() * choices.length)];
+                targetX = rand.x;
+                targetY = rand.y;
+                showToast("🔀 Şaşırtma etkisi! Farklı yöne gittin!", "error");
+            }
+        }
+
         tryMove(targetX, targetY);
         clearPendingAction();
         return;
@@ -484,7 +530,16 @@ function tryMove(targetX, targetY) {
     if (pIndex !== -1) {
         pickupPowerupIndex = pIndex;
         const p = STATE.powerups[pIndex];
-        const names = { destroy: 'Duvar Kırıcı 💣', ghost: 'Hayalet Modu 👻', freeze: 'Dondurucu ❄️', wall: '+1 Duvar 🧱' };
+        const names = {
+            destroy: 'Duvar Kırıcı 💣',
+            ghost: 'Hayalet Modu 👻',
+            freeze: 'Dondurucu ❄️',
+            wall: '+1 Duvar 🧱',
+            return: 'Geri Sar ↩️',
+            chaos: 'Şaşırtma 🔀',
+            double_turn: 'Dejavu 🔁',
+            hourglass: 'Kum Saati ⏳'
+        };
         showToast(`${names[p.type] || 'Powerup'} Alındı!`, "success");
         sounds.play('powerup_collect');
     } else {
@@ -861,7 +916,11 @@ function renderBoard() {
             destroy: { icon: 'fa-bomb', color: '#ef4444' },
             ghost: { icon: 'fa-ghost', color: '#a855f7' },
             freeze: { icon: 'fa-snowflake', color: '#0ea5e9' },
-            wall: { icon: 'fa-plus-square', color: '#f97316' }
+            wall: { icon: 'fa-plus-square', color: '#f97316' },
+            return: { icon: 'fa-undo', color: '#10b981' },
+            chaos: { icon: 'fa-shuffle', color: '#d946ef' },
+            double_turn: { icon: 'fa-repeat', color: '#eab308' },
+            hourglass: { icon: 'fa-hourglass-half', color: '#b45309' }
         };
 
         STATE.powerups.forEach(pObj => {
@@ -1037,6 +1096,12 @@ function listenGameLoop() {
             }
             STATE.powerups = newPowerups;
 
+            STATE.powerups = newPowerups;
+
+            if (data.boardState.activeEffects) {
+                STATE.activeEffects = data.boardState.activeEffects;
+            }
+
             // Migration/Safety: Ensure wallsV/wallsH exist
             ['p1', 'p2'].forEach(pid => {
                 if (typeof STATE.players[pid].wallsV === 'undefined') STATE.players[pid].wallsV = 5;
@@ -1081,6 +1146,15 @@ function sendMove(moveData, endTurn = true) {
         updates[`${pPath}/x`] = moveData.to.x;
         updates[`${pPath}/y`] = moveData.to.y;
 
+        // Consume Chaos if active
+        if (STATE.activeEffects && STATE.activeEffects[pid] && STATE.activeEffects[pid].chaos) {
+            updates[`/boardState/activeEffects/${pid}/chaos`] = false;
+        }
+        // Consume Hourglass if active (implicit by turn end) -> No, ensure it clears
+        if (STATE.activeEffects && STATE.activeEffects[pid] && STATE.activeEffects[pid].hourglass) {
+            updates[`/boardState/activeEffects/${pid}/hourglass`] = false;
+        }
+
         // Pickup Powerup
         if (moveData.pickupPowerupIndex !== undefined && moveData.pickupPowerupIndex !== -1) {
             const idx = moveData.pickupPowerupIndex;
@@ -1114,6 +1188,26 @@ function sendMove(moveData, endTurn = true) {
             const currentWalls = (STATE.players[pid].wallsLeft === undefined) ? 10 : STATE.players[pid].wallsLeft;
             updates[`/boardState/${pid}/wallsLeft`] = currentWalls + 1;
             updates[`${invPath}/wall`] = Math.max(0, (myInv.wall || 0) - 1);
+        } else if (moveData.powerupType === 'return') {
+            // Reset Opponent
+            const oppId = pid === 'p1' ? 'p2' : 'p1';
+            updates[`/boardState/${oppId}/x`] = Math.floor(GRID_COLS / 2);
+            updates[`/boardState/${oppId}/y`] = oppId === 'p2' ? GRID_ROWS - 1 : 0;
+            updates[`${invPath}/return`] = Math.max(0, (myInv.return || 0) - 1);
+        } else if (moveData.powerupType === 'chaos') {
+            const oppId = pid === 'p1' ? 'p2' : 'p1';
+            updates[`/boardState/activeEffects/${oppId}/chaos`] = true;
+            updates[`${invPath}/chaos`] = Math.max(0, (myInv.chaos || 0) - 1);
+        } else if (moveData.powerupType === 'double_turn') {
+            // Consumed, but NO TURN CHANGE
+            // Wait, logic below "if (endTurn)" handles turn change.
+            // We passed endTurn=false in activatePowerup.
+            // But we need to update inventory.
+            updates[`${invPath}/double_turn`] = Math.max(0, (myInv.double_turn || 0) - 1);
+        } else if (moveData.powerupType === 'hourglass') {
+            const oppId = pid === 'p1' ? 'p2' : 'p1';
+            updates[`/boardState/activeEffects/${oppId}/hourglass`] = true;
+            updates[`${invPath}/hourglass`] = Math.max(0, (myInv.hourglass || 0) - 1);
         }
     }
 
@@ -1153,7 +1247,7 @@ function updateTurnUI(turn) {
     if (turn === STATE.playerId) sounds.play('turn_start');
 
     if (me && me.inventory) {
-        const types = ['destroy', 'ghost', 'freeze', 'wall'];
+        const types = ['destroy', 'ghost', 'freeze', 'wall', 'return', 'chaos', 'double_turn', 'hourglass'];
         types.forEach(type => {
             const count = me.inventory[type] || 0;
             const btn = document.getElementById(`btn-${type}`);
@@ -1168,6 +1262,52 @@ function updateTurnUI(turn) {
                 }
             }
         });
+    }
+
+    // Hourglass Timer UI
+    const isUnderPressure = STATE.activeEffects && STATE.activeEffects[turn] && STATE.activeEffects[turn].hourglass;
+    const infoDiv = turn === 'p1' ? document.getElementById('p1-info') : document.getElementById('p2-info');
+
+    // Clear any existing timer visual
+    document.querySelectorAll('.timer-indicator').forEach(e => e.remove());
+
+    if (isUnderPressure && STATE.isMyTurn) {
+        showToast("⏳ Kum Saati! 3 Saniyen Var!", "error");
+
+        const timerEl = document.createElement('div');
+        timerEl.className = 'timer-indicator';
+        timerEl.style = "color: red; font-weight: bold; font-size: 1.2rem; margin-top: 5px;";
+        timerEl.innerText = "⏳ 3";
+        infoDiv.appendChild(timerEl);
+
+        // Timer Logic
+        let timeLeft = 3;
+        // Clear previous interval if exists (need global ref or check)
+        if (window.turnTimer) clearInterval(window.turnTimer);
+
+        window.turnTimer = setInterval(() => {
+            timeLeft--;
+            timerEl.innerText = `⏳ ${timeLeft}`;
+            if (!STATE.isMyTurn) {
+                clearInterval(window.turnTimer);
+                timerEl.remove();
+            }
+            if (timeLeft < 0) {
+                clearInterval(window.turnTimer);
+                timerEl.remove();
+                if (STATE.isMyTurn) {
+                    // Timeout! Random Move
+                    const validMoves = getValidMoves(STATE.players[STATE.playerId].x, STATE.players[STATE.playerId].y);
+                    if (validMoves.length > 0) {
+                        const rand = validMoves[Math.floor(Math.random() * validMoves.length)];
+                        tryMove(rand.x, rand.y);
+                        showToast("Süre doldu! Rastgele oynandı.", "error");
+                    }
+                }
+            }
+        }, 1000);
+    } else {
+        if (window.turnTimer) clearInterval(window.turnTimer);
     }
 
     updateWallCounts();

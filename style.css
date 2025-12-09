@@ -766,9 +766,11 @@ header {
 
 /* Inventory UI */
 .powerup-controls {
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(4, max-content);
+    grid-template-rows: auto auto;
     justify-content: center;
-    gap: 15px;
+    gap: 10px;
     margin-top: 5px;
     width: 100%;
 }
@@ -1027,4 +1029,21 @@ header {
     font-size: 1rem;
     width: 20px;
     text-align: center;
+}
+
+/* NEW POWERUPS */
+#btn-return.active i {
+    color: #10b981;
+}
+
+#btn-chaos.active i {
+    color: #d946ef;
+}
+
+#btn-double_turn.active i {
+    color: #eab308;
+}
+
+#btn-hourglass.active i {
+    color: #b45309;
 }
