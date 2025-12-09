@@ -29,33 +29,65 @@
             </button>
         </header>
 
-        <!-- Stats Grid -->
-        <section class="stats-section">
-            <div class="stat-card">
-                <i class="fa-solid fa-trophy icon-win"></i>
-                <div class="stat-value" id="stat-wins">0</div>
-                <div class="stat-label">Galibiyet</div>
-            </div>
-            <div class="stat-card">
-                <i class="fa-solid fa-skull icon-loss"></i>
-                <div class="stat-value" id="stat-losses">0</div>
-                <div class="stat-label">Mağlubiyet</div>
-            </div>
-            <div class="stat-card">
-                <i class="fa-solid fa-chart-pie icon-rate"></i>
-                <div class="stat-value" id="stat-rate">%0</div>
-                <div class="stat-label">Kazanma Oranı</div>
-            </div>
-        </section>
+        <!-- Tabs Navigation -->
+        <div class="tabs-nav">
+            <button class="tab-btn active" data-tab="stats">İstatistikler</button>
+            <button class="tab-btn" data-tab="friends">Arkadaşlar</button>
+        </div>
 
-        <!-- Match History -->
-        <section class="history-section">
-            <h2>Son Maçlar</h2>
-            <div class="history-list" id="history-list">
-                <!-- Items will be injected by JS -->
-                <div class="empty-state">Henüz maç geçmişi yok.</div>
+        <!-- STATS TAB -->
+        <div id="tab-stats" class="tab-content active">
+            <!-- Stats Grid -->
+            <section class="stats-section">
+                <div class="stat-card">
+                    <i class="fa-solid fa-trophy icon-win"></i>
+                    <div class="stat-value" id="stat-wins">0</div>
+                    <div class="stat-label">Galibiyet</div>
+                </div>
+                <div class="stat-card">
+                    <i class="fa-solid fa-skull icon-loss"></i>
+                    <div class="stat-value" id="stat-losses">0</div>
+                    <div class="stat-label">Mağlubiyet</div>
+                </div>
+                <div class="stat-card">
+                    <i class="fa-solid fa-chart-pie icon-rate"></i>
+                    <div class="stat-value" id="stat-rate">%0</div>
+                    <div class="stat-label">Kazanma Oranı</div>
+                </div>
+                <div class="stat-card">
+                    <i class="fa-solid fa-star icon-fav"></i>
+                    <div class="stat-value" id="stat-fav-powerup">-</div>
+                    <div class="stat-label">Favori Güç</div>
+                </div>
+            </section>
+
+            <!-- Match History -->
+            <section class="history-section">
+                <h2>Son Maçlar</h2>
+                <div class="history-list" id="history-list">
+                    <!-- Items will be injected by JS -->
+                    <div class="empty-state">Henüz maç geçmişi yok.</div>
+                </div>
+            </section>
+        </div>
+
+        <!-- FRIENDS TAB -->
+        <div id="tab-friends" class="tab-content">
+            <div class="friends-header">
+                <div class="my-code-box">
+                    <span>Kodunuz:</span>
+                    <strong id="my-friend-code">...</strong>
+                    <i class="fa-regular fa-copy" id="copy-code-btn" title="Kopyala"></i>
+                </div>
+                <button class="btn-add-friend" id="open-add-friend-btn">
+                    <i class="fa-solid fa-user-plus"></i> Ekle
+                </button>
             </div>
-        </section>
+
+            <div class="friends-list" id="friends-list">
+                <div class="empty-state">Henüz arkadaşınız yok.</div>
+            </div>
+        </div>
 
         <!-- Back Button -->
         <a href="index.html" class="btn-back">
@@ -65,6 +97,58 @@
 
     <!-- Logic -->
     <script type="module" src="profile.js"></script>
+
+    <!-- Match Details Modal -->
+    <div id="details-modal" class="modal hidden">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <div id="modal-icon" class="modal-icon"></div>
+            <h2 id="modal-result">Galibiyet</h2>
+            <div class="modal-details">
+                <p><strong>Rakip:</strong> <span id="modal-opponent">-</span></p>
+                <p><strong>Tarih:</strong> <span id="modal-date">-</span></p>
+
+                <div class="modal-stats-grid">
+                    <div class="stat-box">
+                        <i class="fa-solid fa-stopwatch"></i>
+                        <span id="modal-duration">-</span>
+                        <label>Süre</label>
+                    </div>
+                    <div class="stat-box">
+                        <i class="fa-solid fa-shoe-prints"></i>
+                        <span id="modal-moves">-</span>
+                        <label>Hamle</label>
+                    </div>
+                    <div class="stat-box">
+                        <i class="fa-solid fa-layer-group"></i>
+                        <span id="modal-walls-left">-</span>
+                        <label>Duvar</label>
+                    </div>
+                    <div class="stat-box">
+                        <i class="fa-solid fa-bolt"></i>
+                        <span id="modal-powerups">-</span>
+                        <label>Güç</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Friend Modal -->
+    <div id="add-friend-modal" class="modal hidden">
+        <div class="modal-content">
+            <span class="close-modal" id="close-add-friend-btn">&times;</span>
+            <div class="modal-icon"><i class="fa-solid fa-user-plus" style="color: var(--primary)"></i></div>
+            <h2>Arkadaş Ekle</h2>
+            <div class="input-group">
+                <input type="text" id="friend-code-input" placeholder="Arkadaş Kodu (Örn: X7A2B9)" maxlength="6">
+            </div>
+            <div class="modal-actions">
+                <button class="btn-cancel" id="cancel-add-friend-btn">İptal</button>
+                <button class="btn-confirm" id="confirm-add-friend-btn">Ekle</button>
+            </div>
+        </div>
+    </div>
 
 </body>
 

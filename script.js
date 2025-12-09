@@ -62,6 +62,25 @@ function init() {
                 icon.style.color = "#10b981";
             }
         }
+
+        // Handle URL Invites (after Auth to ensure username is populated if possible)
+        // We do this check only once, so we might need a flag or check if we already joined.
+        if (!STATE.roomId) { // Only if not already in game
+            const urlParams = new URLSearchParams(window.location.search);
+            const roomParam = urlParams.get('room');
+            if (roomParam) {
+                if (urlParams.get('host') === 'true') {
+                    // Slight delay to ensure UI ready
+                    setTimeout(() => createRoom(roomParam), 500);
+                } else if (urlParams.get('join') === 'true') {
+                    const roomInput = document.getElementById('room-code-input');
+                    if (roomInput) {
+                        roomInput.value = roomParam;
+                        setTimeout(() => joinRoom(), 500);
+                    }
+                }
+            }
+        }
     });
 }
 
@@ -569,10 +588,12 @@ function tryMove(targetX, targetY) {
 
         if (p.type === 'star') {
             showToast(`🌟 EFSANEVİ! TÜM GÜÇLER EKLENDİ!`, "success");
-            sounds.play('win'); // Use win sound for legendary pickup
+            sounds.play('win');
+            STATE.powerupCount = (STATE.powerupCount || 0) + 1; // Track Powerup
         } else {
             showToast(`${pName} Alındı!`, "success");
             sounds.play('powerup_collect');
+            STATE.powerupCount = (STATE.powerupCount || 0) + 1; // Track Powerup
         }
     } else {
         sounds.play('move');
@@ -580,6 +601,7 @@ function tryMove(targetX, targetY) {
 
     // Optimistic Update
     updatePlayerPos(STATE.playerId, targetX, targetY);
+    STATE.moveCount = (STATE.moveCount || 0) + 1; // Track Move
 
     // Send
     const consumePowerup = STATE.ghostMode;
@@ -737,7 +759,7 @@ function updatePlayerPos(pid, x, y) {
     STATE.players[pid].x = x;
     STATE.players[pid].y = y;
     renderBoard();
-    checkWin();
+    // checkWin(); // DISABLED: Rely on Server Win Detection for Stats
 }
 
 function checkWin() {
@@ -1030,8 +1052,10 @@ function resetRoom() {
     showScreen('game');
 }
 
-function createRoom() {
-    const roomId = Math.random().toString(36).substring(2, 6).toUpperCase();
+function createRoom(customId = null) {
+    // Ensure customId is a string (and not an Event object from click listeners)
+    const validCustomId = (typeof customId === 'string') ? customId : null;
+    const roomId = validCustomId || Math.random().toString(36).substring(2, 6).toUpperCase();
     const username = document.getElementById('username-input').value || 'P1';
 
     const roomRef = ref(db, 'rooms/' + roomId);
@@ -1095,6 +1119,13 @@ function startGame(data) {
     }
     STATE.gameActive = true;
     STATE.statsRecorded = false; // Reset stats flag
+
+    // Stats Tracking Init
+    STATE.startTime = Date.now();
+    STATE.moveCount = 0;
+    STATE.powerupCount = 0;
+    STATE.powerupUsage = {}; // Track specific powerup types
+
     showScreen('game');
     document.getElementById('p1-name').textContent = data.p1;
     document.getElementById('p2-name').textContent = data.p2;
@@ -1142,12 +1173,36 @@ function listenGameLoop() {
 
             // Check Winner
             if (data.boardState.winner) {
+                console.log("🏆 GAME OVER DETECTED");
+                console.log("Winner:", data.boardState.winner);
+                console.log("Auth User:", auth.currentUser);
+                console.log("Stats Recorded Flag:", STATE.statsRecorded);
+
                 if (!STATE.statsRecorded && auth.currentUser) {
                     STATE.statsRecorded = true;
                     const isWin = (data.boardState.winner === STATE.playerId);
-                    const opponentName = (STATE.playerId === 'p1') ? (data.boardState.p2 || 'Rakip') : (data.boardState.p1 || 'Rakip');
+                    // FIXED: Use root data.p1/p2 for names, not boardState object
+                    const opponentName = (STATE.playerId === 'p1') ? (data.p2 || 'Rakip') : (data.p1 || 'Rakip');
 
-                    updateUserStats(auth.currentUser.uid, isWin, opponentName);
+                    // Extra Stats Calculation
+                    const durationMs = Date.now() - (STATE.startTime || Date.now());
+                    const durationSec = Math.floor(durationMs / 1000);
+                    const minutes = Math.floor(durationSec / 60);
+                    const seconds = durationSec % 60;
+                    const durationStr = `${minutes}dk ${seconds}sn`;
+
+                    const myPid = STATE.playerId;
+                    const wallsLeft = (STATE.players[myPid].wallsLeft !== undefined) ? STATE.players[myPid].wallsLeft : 10;
+
+                    const extraStats = {
+                        duration: durationStr,
+                        moves: STATE.moveCount || 0,
+                        wallsLeft: wallsLeft,
+                        powerups: STATE.powerupCount || 0,
+                        powerupUsage: STATE.powerupUsage || {}
+                    };
+
+                    updateUserStats(auth.currentUser.uid, isWin, opponentName, extraStats);
                 }
                 endGame(data.boardState.winner);
             }
@@ -1205,6 +1260,15 @@ function sendMove(moveData, endTurn = true) {
             updates[`/boardState/activeEffects/${pid}/hourglass`] = false;
         }
 
+        // Check WIN Condition on Move
+        const isWinP1 = (pid === 'p1' && moveData.to.y === GRID_ROWS - 1);
+        const isWinP2 = (pid === 'p2' && moveData.to.y === 0);
+
+        if (isWinP1 || isWinP2) {
+            updates['/boardState/winner'] = pid;
+            updates['/status'] = 'finished';
+        }
+
         // Pickup Powerup
         if (moveData.pickupPowerupIndex !== undefined && moveData.pickupPowerupIndex !== -1) {
             const idx = moveData.pickupPowerupIndex;
@@ -1227,6 +1291,7 @@ function sendMove(moveData, endTurn = true) {
 
         if (moveData.consumePowerup) {
             updates[`${invPath}/ghost`] = Math.max(0, (myInv.ghost || 0) - 1);
+            STATE.powerupUsage['ghost'] = (STATE.powerupUsage['ghost'] || 0) + 1;
         }
     } else if (moveData.type === 'wall') {
         const newWalls = [...STATE.walls, { x: moveData.x, y: moveData.y, type: moveData.orientation, owner: STATE.playerId }];
@@ -1238,7 +1303,12 @@ function sendMove(moveData, endTurn = true) {
         const newWalls = STATE.walls.filter(w => !(w.x === moveData.x && w.y === moveData.y && w.type === moveData.orientation));
         updates['/boardState/walls'] = newWalls;
         updates[`${invPath}/destroy`] = Math.max(0, (myInv.destroy || 0) - 1);
+        STATE.powerupUsage['destroy'] = (STATE.powerupUsage['destroy'] || 0) + 1;
     } else if (moveData.type === 'activate') {
+        // Track Activation
+        const type = moveData.powerupType;
+        STATE.powerupUsage[type] = (STATE.powerupUsage[type] || 0) + 1;
+
         if (moveData.powerupType === 'freeze') {
             updates['/boardState/frozenPlayer'] = nextTurn;
             updates[`${invPath}/freeze`] = Math.max(0, (myInv.freeze || 0) - 1);
@@ -1581,31 +1651,44 @@ init();
 
 
 // --- STATS LOGIC ---
-async function updateUserStats(uid, isWin, opponentName) {
+async function updateUserStats(uid, isWin, opponentName, extraStats = {}) {
     try {
         const statsRef = ref(db, `users/${uid}/stats`);
         const historyRef = ref(db, `match_history/${uid}`);
 
         // 1. Get Current Stats
         const snapshot = await get(statsRef);
-        let stats = snapshot.val() || { wins: 0, losses: 0 };
+        let stats = snapshot.val() || { wins: 0, losses: 0, powerupUsage: {} };
 
         if (isWin) stats.wins++;
         else stats.losses++;
+
+        // Merge Powerup Usage
+        if (extraStats.powerupUsage) {
+            if (!stats.powerupUsage) stats.powerupUsage = {};
+            for (const [type, count] of Object.entries(extraStats.powerupUsage)) {
+                stats.powerupUsage[type] = (stats.powerupUsage[type] || 0) + count;
+            }
+        }
 
         // 2. Update Stats
         await set(statsRef, stats);
 
         // 3. Add History
-        await push(historyRef, {
+        const matchData = {
             opponentName: opponentName,
             result: isWin ? 'win' : 'loss',
-            timestamp: Date.now()
-        });
+            timestamp: Date.now(),
+            ...extraStats
+        };
+
+        await push(historyRef, matchData);
 
         console.log("Stats Updated:", stats);
+        showToast(`İstatistikler Kaydedildi! (${isWin ? 'Galibiyet' : 'Mağlubiyet'})`, "success");
     } catch (e) {
         console.error("Stats Update Error:", e);
+        showToast("İstatistik Kayıt Hatası: " + e.message, "error");
     }
 }
 
