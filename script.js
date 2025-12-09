@@ -364,7 +364,10 @@ function generatePowerup() {
         star: 0.20         // Rarest
     };
 
-    const rand = Math.random();
+    let totalWeight = 0;
+    for (const key in weights) totalWeight += weights[key];
+
+    const rand = Math.random() * totalWeight;
     let sum = 0;
     for (const key in weights) {
         sum += weights[key];
@@ -1265,10 +1268,14 @@ function sendMove(moveData, endTurn = true) {
         updates['/status'] = 'finished';
     }
 
+    let usedDoubleTurn = false;
+
     if (endTurn) {
         // Double Turn Logic: If active, consume and keep turn
         if (STATE.activeEffects && STATE.activeEffects[pid] && STATE.activeEffects[pid].double_turn) {
             updates[`/boardState/activeEffects/${pid}/double_turn`] = false;
+            usedDoubleTurn = true;
+            showToast("🔁 Dejavu! Bir hamle hakkı daha!", "info");
         } else {
             updates['/turn'] = nextTurn;
         }
@@ -1288,9 +1295,15 @@ function sendMove(moveData, endTurn = true) {
     }
 
     update(roomRef, updates);
-    if (endTurn) {
+
+    // Only yield turn if we didn't use double_turn
+    if (endTurn && !usedDoubleTurn) {
         STATE.isMyTurn = false;
         updateTurnUI(nextTurn);
+    } else if (usedDoubleTurn) {
+        // Force refresh board to remove correct wall from hand visually if needed, though listener will do it
+        // effectively we just stay active.
+        // Listener will eventually sync 'double_turn' = false
     }
 }
 
