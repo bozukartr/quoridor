@@ -80,6 +80,18 @@ function setupEventListeners() {
     document.getElementById('rematch-btn').addEventListener('click', resetRoom); // Rematch
     document.getElementById('cancel-room-btn').addEventListener('click', cancelWaiting);
 
+    // Header Controls
+    document.getElementById('btn-leave').addEventListener('click', () => {
+        showModal('Çıkış', 'Oyundan çıkmak istediğine emin misin?', () => {
+            location.reload();
+        });
+    });
+    document.getElementById('btn-surrender').addEventListener('click', () => {
+        showModal('Teslim Ol', 'Teslim olup oyunu bitirmek istiyor musun?', () => {
+            sendMove({ type: 'surrender' });
+        });
+    });
+
     // Game Controls
     controls.moveBtn.addEventListener('click', () => setMode('move'));
     controls.wallBtn.addEventListener('click', () => setMode('wall'));
@@ -122,38 +134,32 @@ function activatePowerup(type) {
             setMode('move');
         }
     } else if (type === 'freeze') {
-        if (confirm('Rakibi dondurmak (duvar koyamaz) istiyor musunuz?')) {
+        showModal('Dondurucu ❄️', 'Rakibi dondurmak (duvar koyamaz) istiyor musunuz?', () => {
             sendMove({ type: 'activate', powerupType: 'freeze' }, false);
             showToast('❄️ Rakip donduruldu!');
-        }
+        });
     } else if (type === 'wall') {
         sendMove({ type: 'activate', powerupType: 'wall' }, false);
         showToast('🧱 +1 Duvar kazandınız!');
     } else if (type === 'return') {
-        if (confirm('Rakibi başlangıç noktasına geri göndermek istiyor musunuz? (Sıra Rakibe Geçer)')) {
+        showModal('Geri Sar ↩️', 'Rakibi başlangıç noktasına geri göndermek istiyor musunuz? (Sıra Rakibe Geçer)', () => {
             sendMove({ type: 'activate', powerupType: 'return' }, true);
             showToast('↩️ Rakip geri gönderildi!');
-        }
+        });
     } else if (type === 'chaos') {
-        // "Sıra rakibe geçmeden önce kullanılmalıdır" -> Means it consumes turn? Or setup?
-        // User said: "Ters-Düz... Sıra rakibe geçmeden önce kullanılmalıdır." implies setup.
-        // Let's assume it consumes turn OR just sets effect? 
-        // "Dönek: ...sıra rakibe geçer" was explicit. Chaos wasn't.
-        // I will make Chaos consume turn to be safe/balanced, or ask user.
-        // Assuming it consumes turn as it's a powerful attack.
-        if (confirm('Rakibin bir sonraki hamlesini şaşırtmak istiyor musunuz?')) {
+        showModal('Şaşırtma 🔀', 'Rakibin bir sonraki hamlesini şaşırtmak istiyor musunuz?', () => {
             sendMove({ type: 'activate', powerupType: 'chaos' }, true);
             showToast('🔀 Şaşırtma aktif!');
-        }
+        });
     } else if (type === 'double_turn') {
         // "Sıra bir kez daha kendisinde olur"
         sendMove({ type: 'activate', powerupType: 'double_turn' }, false); // Don't end turn yet, let logic handle
         showToast('🔁 Dejavu! Bir hamle hakkı daha!');
     } else if (type === 'hourglass') {
-        if (confirm('Rakibi 3 saniye süreyle kısıtlamak istiyor musunuz?')) {
+        showModal('Kum Saati ⏳', 'Rakibi 3 saniye süreyle kısıtlamak istiyor musunuz?', () => {
             sendMove({ type: 'activate', powerupType: 'hourglass' }, true);
             showToast('⏳ Kum Saati aktif!');
-        }
+        });
     }
 }
 
@@ -348,14 +354,14 @@ function generatePowerup() {
     // Weighted Selection: 4-5 turns freq
     const weights = {
         wall: 0.30,        // Most Common
-        destroy: 0.20,
-        ghost: 0.10,
-        freeze: 0.10,
-        return: 0.07,
-        chaos: 0.10,
-        double_turn: 0.06,
-        hourglass: 0.10,
-        star: 0.05         // Rarest
+        destroy: 0.30,
+        ghost: 0.30,
+        freeze: 0.30,
+        return: 0.30,
+        chaos: 0.30,
+        double_turn: 0.30,
+        hourglass: 0.30,
+        star: 0.20         // Rarest
     };
 
     const rand = Math.random();
@@ -854,12 +860,6 @@ function endGame(winnerId) {
     showScreen('gameOver');
 }
 
-function showScreen(name) {
-    if (name !== 'gameOver') stopConfetti();
-    Object.values(screens).forEach(s => s.classList.remove('active'));
-    screens[name].classList.add('active');
-}
-
 function renderBoard() {
     // 1. Clear moving elements (players) and walls (absolute)
     gridBoard.querySelectorAll('.player, .wall, .powerup-icon').forEach(e => e.remove());
@@ -939,7 +939,7 @@ function renderBoard() {
     renderPlayer('p1');
     renderPlayer('p2');
 
-    // 7. Render Powerup
+    // 7. Render Poweru
     // 7. Render Powerups
     if (STATE.powerups) {
         const types = {
@@ -1002,6 +1002,12 @@ function renderValidMoves() {
     });
 }
 
+function showScreen(name) {
+    if (name !== 'gameOver') stopConfetti();
+    Object.values(screens).forEach(s => s.classList.remove('active'));
+    screens[name].classList.add('active');
+}
+
 // --- FIREBASE ACTIONS ---
 
 function resetRoom() {
@@ -1018,8 +1024,12 @@ function resetRoom() {
     const roomRef = ref(db, 'rooms/' + STATE.roomId);
     update(roomRef, {
         turn: Math.random() < 0.5 ? 'p1' : 'p2',
+        status: 'active', // Ensure status is active
         boardState: initialState
     });
+
+    // Explicitly clear winner if it was set at root or in boardState
+    // initialState above clears boardState.winner, but let's be safe about root status.
 
     showScreen('game');
 }
@@ -1133,6 +1143,11 @@ function listenGameLoop() {
                 STATE.activeEffects = data.boardState.activeEffects;
             }
 
+            // Check Winner
+            if (data.boardState.winner) {
+                endGame(data.boardState.winner);
+            }
+
             // Migration/Safety: Ensure wallsV/wallsH exist
             ['p1', 'p2'].forEach(pid => {
                 if (typeof STATE.players[pid].wallsV === 'undefined') STATE.players[pid].wallsV = 5;
@@ -1238,20 +1253,25 @@ function sendMove(moveData, endTurn = true) {
             updates[`/boardState/activeEffects/${oppId}/chaos`] = true;
             updates[`${invPath}/chaos`] = Math.max(0, (myInv.chaos || 0) - 1);
         } else if (moveData.powerupType === 'double_turn') {
-            // Consumed, but NO TURN CHANGE
-            // Wait, logic below "if (endTurn)" handles turn change.
-            // We passed endTurn=false in activatePowerup.
-            // But we need to update inventory.
+            updates[`/boardState/activeEffects/${pid}/double_turn`] = true;
             updates[`${invPath}/double_turn`] = Math.max(0, (myInv.double_turn || 0) - 1);
         } else if (moveData.powerupType === 'hourglass') {
             const oppId = pid === 'p1' ? 'p2' : 'p1';
             updates[`/boardState/activeEffects/${oppId}/hourglass`] = true;
             updates[`${invPath}/hourglass`] = Math.max(0, (myInv.hourglass || 0) - 1);
         }
+    } else if (moveData.type === 'surrender') {
+        updates['/boardState/winner'] = nextTurn;
+        updates['/status'] = 'finished';
     }
 
     if (endTurn) {
-        updates['/turn'] = nextTurn;
+        // Double Turn Logic: If active, consume and keep turn
+        if (STATE.activeEffects && STATE.activeEffects[pid] && STATE.activeEffects[pid].double_turn) {
+            updates[`/boardState/activeEffects/${pid}/double_turn`] = false;
+        } else {
+            updates['/turn'] = nextTurn;
+        }
 
         if (STATE.frozenPlayer === STATE.playerId) {
             updates['/boardState/frozenPlayer'] = null;
@@ -1354,6 +1374,46 @@ function updateTurnUI(turn) {
 }
 
 
+
+
+// --- MODAL UTILS ---
+function showModal(title, message, onConfirm, onCancel) {
+    const el = document.getElementById('modal-overlay');
+    const titleEl = document.getElementById('modal-title');
+    const msgEl = document.getElementById('modal-message');
+
+    if (titleEl) titleEl.textContent = title;
+    if (msgEl) msgEl.textContent = message;
+
+    // Replace buttons to clear listeners
+    const btnConfirm = document.getElementById('modal-confirm');
+    const btnCancel = document.getElementById('modal-cancel');
+
+    if (btnConfirm && btnCancel) {
+        const newConfirm = btnConfirm.cloneNode(true);
+        const newCancel = btnCancel.cloneNode(true);
+
+        btnConfirm.parentNode.replaceChild(newConfirm, btnConfirm);
+        btnCancel.parentNode.replaceChild(newCancel, btnCancel);
+
+        newConfirm.addEventListener('click', () => {
+            closeModal();
+            if (onConfirm) onConfirm();
+        });
+
+        newCancel.addEventListener('click', () => {
+            closeModal();
+            if (onCancel) onCancel();
+        });
+    }
+
+    if (el) el.classList.remove('hidden');
+}
+
+function closeModal() {
+    const el = document.getElementById('modal-overlay');
+    if (el) el.classList.add('hidden');
+}
 
 // Start
 init();

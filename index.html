@@ -24,11 +24,19 @@
         <!-- Toast Container -->
         <div id="toast-container"></div>
 
-        <!-- Sound Controls -->
-        <div id="sound-controls">
-            <i class="fa-solid fa-volume-high" id="volume-icon"></i>
-            <input type="range" id="volume-slider" min="0" max="1" step="0.1" value="0.5">
+        <!-- Modal Overlay -->
+        <div id="modal-overlay" class="hidden">
+            <div id="custom-modal">
+                <h3 id="modal-title">Başlık</h3>
+                <p id="modal-message">Mesaj</p>
+                <div class="modal-actions">
+                    <button id="modal-cancel" class="btn secondary">İptal</button>
+                    <button id="modal-confirm" class="btn primary">Onayla</button>
+                </div>
+            </div>
         </div>
+
+        <!-- REMOVED Old Sound Controls DIV -->
 
         <!-- Login / Start Screen -->
         <div id="start-screen" class="screen active">
@@ -77,6 +85,21 @@
 
         <!-- Game Screen -->
         <div id="game-screen" class="screen">
+            <div id="header-controls">
+                <button id="btn-leave" class="icon-btn red"><i
+                        class="fa-solid fa-arrow-right-from-bracket"></i></button>
+
+                <!-- New Sound Control Group -->
+                <div id="header-sound-group">
+                    <button id="btn-sound-toggle" class="icon-btn glass"><i class="fa-solid fa-volume-high"
+                            id="volume-icon"></i></button>
+                    <div class="volume-slider-container">
+                        <input type="range" id="volume-slider" min="0" max="1" step="0.1" value="0.5">
+                    </div>
+                </div>
+
+                <button id="btn-surrender" class="icon-btn white"><i class="fa-solid fa-flag"></i></button>
+            </div>
             <header>
                 <div class="player-info p1" id="p1-info">
                     <div class="avatar blue"></div>

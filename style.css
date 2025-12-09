@@ -1075,3 +1075,338 @@ header {
 .legendary-pulse {
     animation: pulseGlow 1.5s infinite ease-in-out;
 }
+
+/* HEADER CONTROLS */
+#header-controls {
+    width: 90%;
+    max-width: 440px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+    position: absolute;
+    /* Fix for stacking */
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 60;
+    /* Above header */
+}
+
+/* Adjust Header to sit below controls */
+header {
+    margin-top: 50px;
+    /* Push down */
+}
+
+/* Adjust buttons */
+.icon-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--bg-elevated);
+    color: var(--text-secondary);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 1rem;
+    box-shadow: var(--shadow-sm);
+    backdrop-filter: blur(10px);
+}
+
+.icon-btn:active {
+    transform: scale(0.9);
+}
+
+.icon-btn.red {
+    color: #ef4444;
+    border-color: rgba(239, 68, 68, 0.3);
+}
+
+.icon-btn.red:hover {
+    background: rgba(239, 68, 68, 0.1);
+}
+
+.icon-btn.white {
+    color: #ffffff;
+    border-color: rgba(255, 255, 255, 0.3);
+}
+
+/* MODAL */
+#modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(5px);
+    z-index: 2000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+#modal-overlay.hidden {
+    display: none;
+}
+
+#custom-modal {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    padding: 24px;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    width: 90%;
+    max-width: 320px;
+    text-align: center;
+    animation: scaleIn 0.2s ease-out;
+}
+
+@keyframes scaleIn {
+    from {
+        transform: scale(0.9);
+        opacity: 0;
+    }
+
+    to {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+#modal-title {
+    margin: 0 0 12px 0;
+    font-size: 1.2rem;
+    color: var(--text-primary);
+}
+
+#modal-message {
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+    margin-bottom: 24px;
+    line-height: 1.5;
+}
+
+
+
+/* NEW POWERUPS */
+#btn-return.active i {
+    color: #10b981;
+}
+
+#btn-chaos.active i {
+    color: #d946ef;
+}
+
+#btn-double_turn.active i {
+    color: #eab308;
+}
+
+#btn-hourglass.active i {
+    color: #b45309;
+}
+
+/* LEGENDARY STAR ANIMATION */
+@keyframes pulseGlow {
+    0% {
+        transform: translate(-50%, -50%) scale(1);
+        filter: drop-shadow(0 0 5px #ffd700);
+    }
+
+    50% {
+        transform: translate(-50%, -50%) scale(1.3);
+        filter: drop-shadow(0 0 15px #ffd700);
+    }
+
+    100% {
+        transform: translate(-50%, -50%) scale(1);
+        filter: drop-shadow(0 0 5px #ffd700);
+    }
+}
+
+.legendary-pulse {
+    animation: pulseGlow 1.5s infinite ease-in-out;
+}
+
+/* HEADER CONTROLS */
+#header-controls {
+    width: 90%;
+    max-width: 440px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+    position: absolute;
+    /* Fix for stacking */
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 60;
+    /* Above header */
+}
+
+/* Adjust Header to sit below controls */
+header {
+    margin-top: 50px;
+    /* Push down */
+}
+
+/* Adjust buttons */
+.icon-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--bg-elevated);
+    color: var(--text-secondary);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 1rem;
+    box-shadow: var(--shadow-sm);
+    backdrop-filter: blur(10px);
+}
+
+.icon-btn:active {
+    transform: scale(0.9);
+}
+
+.icon-btn.red {
+    color: #ef4444;
+    border-color: rgba(239, 68, 68, 0.3);
+}
+
+.icon-btn.red:hover {
+    background: rgba(239, 68, 68, 0.1);
+}
+
+.icon-btn.white {
+    color: #ffffff;
+    border-color: rgba(255, 255, 255, 0.3);
+}
+
+/* MODAL */
+#modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(5px);
+    z-index: 2000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+#modal-overlay.hidden {
+    display: none;
+}
+
+#custom-modal {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    padding: 24px;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    width: 90%;
+    max-width: 320px;
+    text-align: center;
+    animation: scaleIn 0.2s ease-out;
+}
+
+@keyframes scaleIn {
+    from {
+        transform: scale(0.9);
+        opacity: 0;
+    }
+
+    to {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+#modal-title {
+    margin: 0 0 12px 0;
+    font-size: 1.2rem;
+    color: var(--text-primary);
+}
+
+#modal-message {
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+    margin-bottom: 24px;
+    line-height: 1.5;
+}
+
+.modal-actions {
+    display: flex;
+    gap: 12px;
+}
+
+/* SOUND CONTROLS - HEADER EXPANDABLE */
+#header-sound-group {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+#header-sound-group .icon-btn.glass {
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+    border-color: rgba(255, 255, 255, 0.2);
+    color: var(--text-secondary);
+    z-index: 2;
+    /* On top of slider container */
+}
+
+#header-sound-group .icon-btn.glass:hover {
+    background: rgba(255, 255, 255, 0.2);
+    color: var(--text-primary);
+}
+
+.volume-slider-container {
+    position: absolute;
+    left: 18px;
+    /* Start from center of button */
+    top: 50%;
+    transform: translateY(-50%) scaleX(0);
+    transform-origin: left center;
+    width: 0;
+    height: 36px;
+    background: rgba(20, 24, 36, 0.9);
+    border: 1px solid var(--border);
+    border-radius: 0 18px 18px 0;
+    display: flex;
+    align-items: center;
+    padding-left: 20px;
+    /* Space for button overlap */
+    padding-right: 12px;
+    opacity: 0;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
+    z-index: 1;
+    /* Behind button */
+}
+
+#header-sound-group:hover .volume-slider-container,
+.volume-slider-container:hover {
+    width: 120px;
+    opacity: 1;
+    transform: translateY(-50%) scaleX(1);
+}
+
+#volume-slider {
+    width: 100%;
+    height: 4px;
+    accent-color: var(--primary);
+    cursor: pointer;
+}
