@@ -14,13 +14,14 @@ const STATE = {
     wallOrientation: 'vertical', // 'vertical' or 'horizontal'
     board: [],
     players: {
-        p1: { x: 3, y: 0, wallsLeft: 10, hasPowerup: false },
-        p2: { x: 3, y: 8, wallsLeft: 10, hasPowerup: false }
+        p1: { x: 3, y: 0, wallsLeft: 8, hasPowerup: false },
+        p2: { x: 3, y: 8, wallsLeft: 8, hasPowerup: false }
     },
     powerups: [], // Array of {x, y, type}
     walls: [], // Array of {x, y, type} (x,y = Gap Coordinates)
     gameActive: false,
     activeEffects: { p1: { chaos: false, hourglass: false }, p2: { chaos: false, hourglass: false } }, // New State
+    timeRemaining: { p1: 90, p2: 90 }, // Chess Timer (Seconds)
     pendingAction: null // { type: 'move'|'wall', x, y, orientation? }
 };
 
@@ -133,6 +134,12 @@ function activatePowerup(type) {
         return;
     }
 
+    // Rule: Except 'wall', must be my turn
+    if (!STATE.isMyTurn && type !== 'wall') {
+        showToast("Sıra sizde değil! (Sadece +1 Duvar kullanılabilir)");
+        return;
+    }
+
     if (type === 'destroy') {
         setMode('destroy');
         showToast('💣 Yıkmak istediğiniz duvarı seçin!');
@@ -168,7 +175,7 @@ function activatePowerup(type) {
         sendMove({ type: 'activate', powerupType: 'double_turn' }, false); // Don't end turn yet, let logic handle
         showToast('🔁 Dejavu! Bir hamle hakkı daha!');
     } else if (type === 'hourglass') {
-        showModal('Kum Saati ⏳', 'Rakibi 3 saniye süreyle kısıtlamak istiyor musunuz?', () => {
+        showModal('Kum Saati ⏳', 'Rakibin toplam süresinden 10 saniye silmek istiyor musunuz? (Sıra rakibe geçer)', () => {
             sendMove({ type: 'activate', powerupType: 'hourglass' }, true);
             showToast('⏳ Kum Saati aktif!');
         });
@@ -1033,10 +1040,11 @@ function resetRoom() {
 
     // Reset to initial state
     const initialState = {
-        p1: { x: Math.floor(GRID_COLS / 2), y: 0, wallsLeft: 10, inventory: { destroy: 0, ghost: 0, freeze: 0, wall: 0 } },
-        p2: { x: Math.floor(GRID_COLS / 2), y: GRID_ROWS - 1, wallsLeft: 10, inventory: { destroy: 0, ghost: 0, freeze: 0, wall: 0 } },
+        p1: { x: Math.floor(GRID_COLS / 2), y: 0, wallsLeft: 8, inventory: { destroy: 0, ghost: 0, freeze: 0, wall: 0 } },
+        p2: { x: Math.floor(GRID_COLS / 2), y: GRID_ROWS - 1, wallsLeft: 8, inventory: { destroy: 0, ghost: 0, freeze: 0, wall: 0 } },
         walls: [],
-        powerups: []
+        powerups: [],
+        timeRemaining: { p1: 90, p2: 90 }
     };
 
     const roomRef = ref(db, 'rooms/' + STATE.roomId);
@@ -1064,10 +1072,11 @@ function createRoom(customId = null) {
         turn: Math.random() < 0.5 ? 'p1' : 'p2',
         status: 'waiting',
         boardState: {
-            p1: { x: Math.floor(GRID_COLS / 2), y: 0, wallsLeft: 10, inventory: { destroy: 0, ghost: 0, freeze: 0, wall: 0 } },
-            p2: { x: Math.floor(GRID_COLS / 2), y: GRID_ROWS - 1, wallsLeft: 10, inventory: { destroy: 0, ghost: 0, freeze: 0, wall: 0 } },
+            p1: { x: Math.floor(GRID_COLS / 2), y: 0, wallsLeft: 8, inventory: { destroy: 0, ghost: 0, freeze: 0, wall: 0 } },
+            p2: { x: Math.floor(GRID_COLS / 2), y: GRID_ROWS - 1, wallsLeft: 8, inventory: { destroy: 0, ghost: 0, freeze: 0, wall: 0 } },
             walls: [],
-            powerups: []
+            powerups: [],
+            timeRemaining: { p1: 90, p2: 90 }
         }
     });
 
@@ -1121,6 +1130,53 @@ function joinRoom(retryCount = 0) {
     });
 }
 
+
+
+function updateHeader() {
+    const p1Time = (STATE.timeRemaining && STATE.timeRemaining.p1 !== undefined) ? STATE.timeRemaining.p1 : 90;
+    const p2Time = (STATE.timeRemaining && STATE.timeRemaining.p2 !== undefined) ? STATE.timeRemaining.p2 : 90;
+
+    const p1TimerEl = document.getElementById('p1-timer');
+    const p2TimerEl = document.getElementById('p2-timer');
+
+    if (p1TimerEl) {
+        p1TimerEl.innerHTML = `<i class="fa-solid fa-hourglass-start"></i> <span>${p1Time}s</span>`;
+        p1TimerEl.classList.toggle('low-time', p1Time <= 15);
+    }
+    if (p2TimerEl) {
+        p2TimerEl.innerHTML = `<i class="fa-solid fa-hourglass-start"></i> <span>${p2Time}s</span>`;
+        p2TimerEl.classList.toggle('low-time', p2Time <= 15);
+    }
+}
+
+let turnTimerInterval = null;
+
+function startTurnTimer(activePlayerId) {
+    if (turnTimerInterval) clearInterval(turnTimerInterval);
+    if (!STATE.gameActive) return;
+
+    // Only run timer for the active player
+    turnTimerInterval = setInterval(() => {
+        if (STATE.timeRemaining && STATE.timeRemaining[activePlayerId] > 0) {
+            STATE.timeRemaining[activePlayerId]--;
+            updateHeader();
+
+            // Local timeout check
+            if (activePlayerId === STATE.playerId && STATE.timeRemaining[activePlayerId] <= 0) {
+                clearInterval(turnTimerInterval);
+                sendMove({ type: 'surrender' }); // Auto-surrender on timeout
+                showToast("Süre doldu!", "error");
+            }
+        } else {
+            clearInterval(turnTimerInterval);
+        }
+    }, 1000);
+}
+
+function stopTurnTimer() {
+    if (turnTimerInterval) clearInterval(turnTimerInterval);
+}
+
 function startGame(data) {
     if (STATE.roomUnsubscribe) {
         STATE.roomUnsubscribe();
@@ -1133,11 +1189,15 @@ function startGame(data) {
     STATE.startTime = Date.now();
     STATE.moveCount = 0;
     STATE.powerupCount = 0;
-    STATE.powerupUsage = {}; // Track specific powerup types
+    STATE.powerupUsage = {};
+    STATE.timeRemaining = { p1: 90, p2: 90 }; // Reset Timer
 
     showScreen('game');
-    document.getElementById('p1-name').textContent = data.p1;
-    document.getElementById('p2-name').textContent = data.p2;
+    // FIXED: Truncate names to first word
+    document.getElementById('p1-name').textContent = (data.p1 || 'P1').split(' ')[0];
+    document.getElementById('p2-name').textContent = (data.p2 || 'P2').split(' ')[0];
+
+    updateHeader(); // Initial timer show
 
     // Flip for P1
     if (STATE.playerId === 'p1') {
@@ -1174,23 +1234,26 @@ function listenGameLoop() {
             }
             STATE.powerups = newPowerups;
 
-            STATE.powerups = newPowerups;
-
             if (data.boardState.activeEffects) {
                 STATE.activeEffects = data.boardState.activeEffects;
+            }
+
+            // Sync Timers
+            if (data.boardState.timeRemaining) {
+                STATE.timeRemaining = data.boardState.timeRemaining;
+                updateHeader();
             }
 
             // Check Winner
             if (data.boardState.winner) {
                 console.log("🏆 GAME OVER DETECTED");
-                console.log("Winner:", data.boardState.winner);
-                console.log("Auth User:", auth.currentUser);
-                console.log("Stats Recorded Flag:", STATE.statsRecorded);
+
+                // Stop Timer on Game Over
+                stopTurnTimer();
 
                 if (!STATE.statsRecorded && auth.currentUser) {
                     STATE.statsRecorded = true;
                     const isWin = (data.boardState.winner === STATE.playerId);
-                    // FIXED: Use root data.p1/p2 for names, not boardState object
                     const opponentName = (STATE.playerId === 'p1') ? (data.p2 || 'Rakip') : (data.p1 || 'Rakip');
 
                     // Extra Stats Calculation
@@ -1201,7 +1264,7 @@ function listenGameLoop() {
                     const durationStr = `${minutes}dk ${seconds}sn`;
 
                     const myPid = STATE.playerId;
-                    const wallsLeft = (STATE.players[myPid].wallsLeft !== undefined) ? STATE.players[myPid].wallsLeft : 10;
+                    const wallsLeft = (STATE.players[myPid].wallsLeft !== undefined) ? STATE.players[myPid].wallsLeft : 8;
 
                     const extraStats = {
                         duration: durationStr,
@@ -1224,7 +1287,6 @@ function listenGameLoop() {
             });
 
             STATE.walls = data.boardState.walls || [];
-            STATE.powerups = data.boardState.powerups || [];
             STATE.frozenPlayer = data.boardState.frozenPlayer || null;
         }
 
@@ -1340,8 +1402,12 @@ function sendMove(moveData, endTurn = true) {
             updates[`${invPath}/double_turn`] = Math.max(0, (myInv.double_turn || 0) - 1);
         } else if (moveData.powerupType === 'hourglass') {
             const oppId = pid === 'p1' ? 'p2' : 'p1';
-            updates[`/boardState/activeEffects/${oppId}/hourglass`] = true;
+            // NEW RULE: Deduct 10 seconds from opponent
+            // Logic: we update the boardState.timeRemaining in Firebase directly.
+            updates[`/boardState/timeRemaining/${oppId}`] = Math.max(0, (STATE.timeRemaining[oppId] || 90) - 10);
+
             updates[`${invPath}/hourglass`] = Math.max(0, (myInv.hourglass || 0) - 1);
+            showToast("⌛ Zaman Hırsızı! Rakip 10sn kaybetti.", "warning");
         }
     } else if (moveData.type === 'surrender') {
         updates['/boardState/winner'] = nextTurn;
@@ -1351,6 +1417,13 @@ function sendMove(moveData, endTurn = true) {
     let usedDoubleTurn = false;
 
     if (endTurn) {
+        // Stop my timer immediately locally
+        stopTurnTimer();
+
+        // Push FINAL time for this turn to server (Sync)
+        // Note: STATE.timeRemaining[pid] was ticking down locally.
+        updates[`/boardState/timeRemaining/${pid}`] = STATE.timeRemaining[pid];
+
         // Double Turn Logic: If active, consume and keep turn
         if (STATE.activeEffects && STATE.activeEffects[pid] && STATE.activeEffects[pid].double_turn) {
             updates[`/boardState/activeEffects/${pid}/double_turn`] = false;
@@ -1379,11 +1452,7 @@ function sendMove(moveData, endTurn = true) {
     // Only yield turn if we didn't use double_turn
     if (endTurn && !usedDoubleTurn) {
         STATE.isMyTurn = false;
-        updateTurnUI(nextTurn);
-    } else if (usedDoubleTurn) {
-        // Force refresh board to remove correct wall from hand visually if needed, though listener will do it
-        // effectively we just stay active.
-        // Listener will eventually sync 'double_turn' = false
+        // updateTurnUI will be called by listener, but we can optimistically stop strict interactions
     }
 }
 
@@ -1394,6 +1463,8 @@ function updateTurnUI(turn) {
     p1Info.classList.toggle('active', turn === 'p1');
     p2Info.classList.toggle('active', turn === 'p2');
 
+    // Start Timer for the active player
+    startTurnTimer(turn);
     // Inventory Badge Update
     const me = STATE.players[STATE.playerId];
     if (turn === STATE.playerId) sounds.play('turn_start');
@@ -1572,7 +1643,7 @@ const TUTORIAL_CONTENT = {
     },
     hourglass: {
         title: "Kum Saati",
-        desc: "Rakibin hamle süresini bir tur için 3 saniyeye düşürür.",
+        desc: "Rakibin toplam süresinden 10 saniye siler.",
         icon_html: '<i class="fa-solid fa-hourglass-half"></i>',
         color: '#b45309'
     },

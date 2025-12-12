@@ -19,8 +19,10 @@
     /* Start Screen Compact */
     .start-content {
         padding: 0 10px;
-        margin-top: -20px;
-        /* Pull up */
+        margin-top: -30px;
+        /* Pull higher */
+        gap: 16px;
+        /* Reduced from 40px */
     }
 
     .start-card {
@@ -30,8 +32,8 @@
 
     .app-logo {
         max-width: 120px;
-        /* Much smaller logo */
-        margin-bottom: 12px;
+        margin-bottom: 8px;
+        /* Reduced from 24px */
     }
 
     .input-group input {
@@ -164,5 +166,61 @@
             transform: scale(0.75);
             margin: -20px 0;
         }
+
+        /* Compact Inventory for Short Screens */
+        .powerup-controls {
+            gap: 6px;
+            margin-top: 2px;
+        }
+
+        .inventory-btn {
+            width: 36px;
+            height: 36px;
+            font-size: 0.9rem;
+            border-radius: 8px;
+        }
+
+        .controls {
+            margin-bottom: 2px;
+            padding: 4px;
+        }
+
+        .action-btn {
+            padding: 6px 10px;
+            font-size: 0.8rem;
+        }
+    }
+}
+
+/* Base Mobile Adjustments for Inventory (General Mobile) */
+@media (max-width: 480px) {
+    .inventory-btn {
+        width: 42px;
+        height: 42px;
+    }
+
+    /* Start Screen Compact - General Mobile */
+    .start-content {
+        padding: 0 16px;
+        gap: 20px;
+        /* Broadly reduced from 40px */
+    }
+
+    .app-logo {
+        margin-bottom: 10px;
+        /* Broadly reduced from 24px */
+        max-width: 160px;
+    }
+}
+
+@media (max-width: 380px) {
+    .inventory-btn {
+        width: 34px;
+        height: 34px;
+        font-size: 0.8rem;
+    }
+
+    .powerup-controls {
+        gap: 4px;
     }
 }
