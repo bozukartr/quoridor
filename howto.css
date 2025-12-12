@@ -1,0 +1,227 @@
+/* Tutorial Page Specific Styles */
+/* Only add styles that are NOT in style.css */
+
+body.tutorial-mode {
+    background-color: #0f172a;
+    color: white;
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* Custom Instruction Card - TOP MODAL */
+.instruction-card {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(to bottom, #1e293b 0%, #0f172a 100%);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 0 0 16px 16px;
+    padding: 20px 24px;
+    margin: 0;
+    text-align: center;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    z-index: 1000;
+    width: auto;
+
+    transform: translateY(-100%);
+    animation: slideDown 0.5s forwards ease-out;
+}
+
+@keyframes slideDown {
+    to {
+        transform: translateY(0);
+    }
+}
+
+#instruction-text {
+    font-size: 1.1rem;
+    margin: 30px 0 16px 0;
+    line-height: 1.6;
+    color: #f1f5f9;
+    font-weight: 500;
+}
+
+#progress-bar {
+    width: 100%;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-top: 8px;
+}
+
+#progress-fill {
+    width: 0%;
+    height: 100%;
+    background: #3b82f6;
+    transition: width 0.3s ease;
+}
+
+/* Powerup Controls Container Fix */
+.powerup-controls {
+    display: none;
+    /* Toggled by JS */
+    justify-content: center;
+    gap: 16px;
+    padding: 20px;
+    /* Ample padding to prevent clipping of shadows/badges */
+    width: 100%;
+    overflow: visible;
+    /* Prevent clipping */
+}
+
+/* Inventory Button Styles (Ensure visibility) */
+.inventory-btn {
+    position: relative;
+    width: 50px;
+    height: 50px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #cbd5e1;
+    font-size: 1.2rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.inventory-btn.hidden {
+    display: none;
+}
+
+.inventory-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+    transform: translateY(-2px);
+}
+
+.inventory-btn .badge {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    background: #ef4444;
+    color: white;
+    font-size: 0.7rem;
+    font-weight: bold;
+    padding: 2px 6px;
+    border-radius: 10px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    z-index: 10;
+}
+
+/* Active Powerup Coloring (Icon Only) */
+#btn-destroy.active i {
+    color: #ef4444;
+}
+
+#btn-ghost.active i {
+    color: #a855f7;
+}
+
+#btn-freeze.active i {
+    color: #0ea5e9;
+}
+
+#btn-wall.active i {
+    color: #f97316;
+}
+
+.inventory-btn.active {
+    border-color: rgba(255, 255, 255, 0.5);
+    background: rgba(255, 255, 255, 0.1);
+}
+
+/* Target Highlight */
+@keyframes pulse-target {
+    0% {
+        box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7);
+        border-color: #22c55e;
+    }
+
+    70% {
+        box-shadow: 0 0 0 15px rgba(34, 197, 94, 0);
+        border-color: #22c55e;
+    }
+
+    100% {
+        box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
+        border-color: #22c55e;
+    }
+}
+
+.target-cell {
+    animation: pulse-target 1.5s infinite;
+    z-index: 50;
+}
+
+.target-cell::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border: 3px solid #22c55e;
+    border-radius: 4px;
+    pointer-events: none;
+}
+
+/* Success Modal */
+.modal-overlay.hidden {
+    display: none;
+}
+
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 2000;
+}
+
+.success-card {
+    background: #1e293b;
+    padding: 2rem;
+    border-radius: 16px;
+    text-align: center;
+    max-width: 90%;
+    width: 320px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.success-icon {
+    width: 64px;
+    height: 64px;
+    background: rgba(34, 197, 94, 0.2);
+    color: #22c55e;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
+    margin: 0 auto 1rem auto;
+}
+
+/* Pulse */
+.pulse {
+    animation: btn-pulse 1.5s infinite;
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7);
+}
+
+@keyframes btn-pulse {
+    0% {
+        transform: scale(0.95);
+        box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7);
+    }
+
+    70% {
+        transform: scale(1);
+        box-shadow: 0 0 0 10px rgba(59, 130, 246, 0);
+    }
+
+    100% {
+        transform: scale(0.95);
+        box-shadow: 0 0 0 0 rgba(59, 130, 246, 0);
+    }
+}

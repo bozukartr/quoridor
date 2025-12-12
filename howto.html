@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Oyun Rehberi - İnteraktif Eğitim</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="howto.css">
+    <link rel="stylesheet" href="mobilemedia.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body class="tutorial-mode">
+
+    <div id="game-screen" class="screen active" style="display: flex;">
+        <!-- Top Navigation -->
+        <div id="header-controls" style="justify-content: space-between; padding: 10px;">
+            <button id="back-btn" class="icon-btn white"><i class="fa-solid fa-arrow-left"></i></button>
+            <h3 id="lesson-title" style="margin:0; color:white; font-size:1.1rem;">Eğitim</h3>
+            <div style="width: 40px;"></div> <!-- Spacer -->
+        </div>
+
+        <!-- Instruction Card (Custom for Tutorial) -->
+        <div class="instruction-card" style="margin: 10px; width: calc(100% - 20px);">
+            <p id="instruction-text" style="color: #cbd5e1; margin-bottom: 8px;">Yükleniyor...</p>
+            <div id="progress-bar">
+                <div id="progress-fill"></div>
+            </div>
+        </div>
+
+        <!-- Player Header (Identical to Game) -->
+        <header>
+            <div class="player-info p1" id="p1-info">
+                <div class="avatar blue"></div>
+                <div class="player-details">
+                    <span id="p1-name">SEN</span>
+                </div>
+            </div>
+            <div class="game-status"><span class="vs-badge">VS</span></div>
+            <div class="player-info p2" id="p2-info">
+                <div class="player-details right">
+                    <span id="p2-name">RAKİP</span>
+                </div>
+                <div class="avatar red"></div>
+            </div>
+        </header>
+
+        <!-- Board -->
+        <div class="board-container">
+            <div id="grid-board" class="grid-board"></div>
+        </div>
+
+        <!-- Controls (Identical to Game) -->
+        <div class="controls">
+            <button id="move-mode-btn" class="action-btn active">
+                <i class="fa-solid fa-person-walking"></i> Hareket
+            </button>
+            <button id="wall-mode-btn" class="action-btn">
+                <i class="fa-solid fa-block-brick"></i> Duvar
+            </button>
+            <button id="wall-rotate-btn" class="action-btn hidden">
+                <i class="fa-solid fa-rotate"></i> <span id="wall-orientation">Dikey</span>
+            </button>
+        </div>
+
+        <!-- Powerups (Hidden initially, shown if lesson requires) -->
+        <div class="powerup-controls" id="tutorial-powerups">
+            <button id="btn-destroy" class="inventory-btn hidden" title="Duvar Kırıcı">
+                <i class="fa-solid fa-bomb"></i> <span class="badge">1</span>
+            </button>
+            <button id="btn-ghost" class="inventory-btn hidden" title="Hayalet Modu">
+                <i class="fa-solid fa-ghost"></i> <span class="badge">1</span>
+            </button>
+        </div>
+
+    </div>
+
+    <!-- Success Modal -->
+    <div id="success-modal" class="modal-overlay hidden">
+        <div class="modal-card success-card">
+            <div class="success-icon"><i class="fa-solid fa-check"></i></div>
+            <h3>Harika!</h3>
+            <p id="success-message">Senaryoyu tamamladın.</p>
+            <button id="finish-btn" class="btn primary">Menüye Dön</button>
+        </div>
+    </div>
+
+    <script src="howto.js"></script>
+</body>
+
+</html>

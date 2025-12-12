@@ -1044,7 +1044,8 @@ function resetRoom() {
         p2: { x: Math.floor(GRID_COLS / 2), y: GRID_ROWS - 1, wallsLeft: 8, inventory: { destroy: 0, ghost: 0, freeze: 0, wall: 0 } },
         walls: [],
         powerups: [],
-        timeRemaining: { p1: 90, p2: 90 }
+        timeRemaining: { p1: 90, p2: 90 },
+        winner: null // Explicitly clear winner for rematch
     };
 
     const roomRef = ref(db, 'rooms/' + STATE.roomId);
@@ -1408,6 +1409,13 @@ function sendMove(moveData, endTurn = true) {
 
             updates[`${invPath}/hourglass`] = Math.max(0, (myInv.hourglass || 0) - 1);
             showToast("⌛ Zaman Hırsızı! Rakip 10sn kaybetti.", "warning");
+
+            // Check if this caused a timeout victory
+            if ((STATE.timeRemaining[oppId] || 90) - 10 <= 0) {
+                updates['/boardState/winner'] = pid;
+                updates['/status'] = 'finished';
+                showToast("⌛ Rakibin süresi bitti! Kazandın!", "success");
+            }
         }
     } else if (moveData.type === 'surrender') {
         updates['/boardState/winner'] = nextTurn;
@@ -1699,6 +1707,31 @@ function updateTutorialInfo(key) {
     const preview = document.getElementById('tutorial-preview-icon');
     preview.innerHTML = item.icon_html;
     preview.style.color = item.color;
+
+    // ADDED: "Öğren" Button logic
+    let learnBtn = document.getElementById('tutorial-learn-btn');
+    if (!learnBtn) {
+        learnBtn = document.createElement('button');
+        learnBtn.id = 'tutorial-learn-btn';
+        learnBtn.className = 'btn primary';
+        learnBtn.style.width = '100%';
+        learnBtn.style.marginTop = '1.5rem';
+        learnBtn.style.display = 'flex';
+        learnBtn.style.justifyContent = 'center';
+        learnBtn.style.alignItems = 'center';
+        learnBtn.style.gap = '8px';
+        learnBtn.innerHTML = '<span>Öğren & Dene</span> <i class="fa-solid fa-gamepad"></i>';
+
+        // Append after desc
+        const descEl = document.getElementById('tutorial-desc');
+        descEl.parentNode.appendChild(learnBtn);
+    }
+
+    // Update Click Listener
+    // Clone to remove old listeners or just set onclick
+    learnBtn.onclick = () => {
+        window.location.href = `howto.html?topic=${key}`;
+    };
 }
 
 // Tutorial Event Listeners (Add to setupListeners or here safely)
