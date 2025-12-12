@@ -37,12 +37,18 @@
                 <div class="avatar blue"></div>
                 <div class="player-details">
                     <span id="p1-name">SEN</span>
+                    <div class="wall-count"><i class="fa-solid fa-block-brick"></i> <span id="p1-walls">10</span></div>
                 </div>
             </div>
             <div class="game-status"><span class="vs-badge">VS</span></div>
             <div class="player-info p2" id="p2-info">
                 <div class="player-details right">
                     <span id="p2-name">RAKİP</span>
+                    <div class="wall-count"><i class="fa-solid fa-block-brick"></i> <span id="p2-walls">10</span></div>
+                    <!-- Opponent Timer for Hourglass Lesson -->
+                    <div id="opponent-timer-display"
+                        style="display:none; color: #f87171; font-weight: bold; margin-top: 4px; font-size: 0.9rem;">⏳
+                        15s</div>
                 </div>
                 <div class="avatar red"></div>
             </div>
@@ -74,6 +80,25 @@
             <button id="btn-ghost" class="inventory-btn hidden" title="Hayalet Modu">
                 <i class="fa-solid fa-ghost"></i> <span class="badge">1</span>
             </button>
+            <button id="btn-freeze" class="inventory-btn hidden" title="Dondurucu">
+                <i class="fa-solid fa-snowflake"></i> <span class="badge">1</span>
+            </button>
+            <button id="btn-wall_plus" class="inventory-btn hidden" title="+1 Duvar">
+                <i class="fa-solid fa-plus-square"></i> <span class="badge">1</span>
+            </button>
+            <button id="btn-return" class="inventory-btn hidden" title="Geri Sar">
+                <i class="fa-solid fa-undo"></i> <span class="badge">1</span>
+            </button>
+            <button id="btn-chaos" class="inventory-btn hidden" title="Kaos">
+                <i class="fa-solid fa-shuffle"></i> <span class="badge">1</span>
+            </button>
+            <button id="btn-double_turn" class="inventory-btn hidden" title="Çift Hamle">
+                <i class="fa-solid fa-repeat"></i> <span class="badge">1</span>
+            </button>
+            <button id="btn-hourglass" class="inventory-btn hidden" title="Kum Saati">
+                <i class="fa-solid fa-hourglass-start"></i> <span class="badge">1</span>
+            </button>
+            <!-- Star: Special lesson where inventory is shown but disabled until star is collected -->
         </div>
 
     </div>

@@ -22,7 +22,8 @@ const STATE = {
     gameActive: false,
     activeEffects: { p1: { chaos: false, hourglass: false }, p2: { chaos: false, hourglass: false } }, // New State
     timeRemaining: { p1: 90, p2: 90 }, // Chess Timer (Seconds)
-    pendingAction: null // { type: 'move'|'wall', x, y, orientation? }
+    pendingAction: null, // { type: 'move'|'wall', x, y, orientation? }
+    usedPowerupsInTurn: new Set() // Track usage per turn
 };
 
 // --- DOM ELEMENTS ---
@@ -140,6 +141,19 @@ function activatePowerup(type) {
         return;
     }
 
+    // Rule: Single use per turn (except Wall and Ghost toggle)
+    if (type !== 'wall') {
+        // Ghost Logic is special (toggle)
+        if (type === 'ghost' && STATE.ghostMode) {
+            // Allow deactivation
+        } else {
+            if (STATE.usedPowerupsInTurn.has(type)) {
+                showToast("Bu özelliği bu tur zaten kullandınız! (Sıra bekleyiniz)", "error");
+                return;
+            }
+        }
+    }
+
     if (type === 'destroy') {
         setMode('destroy');
         showToast('💣 Yıkmak istediğiniz duvarı seçin!');
@@ -150,12 +164,14 @@ function activatePowerup(type) {
         } else {
             STATE.ghostMode = true;
             showToast('👻 Hayalet Modu Aktif! (Harekette harcanır)');
+            STATE.usedPowerupsInTurn.add('ghost');
             setMode('move');
         }
     } else if (type === 'freeze') {
         showModal('Dondurucu ❄️', 'Rakibi dondurmak (duvar koyamaz) istiyor musunuz?', () => {
             sendMove({ type: 'activate', powerupType: 'freeze' }, false);
             showToast('❄️ Rakip donduruldu!');
+            STATE.usedPowerupsInTurn.add('freeze');
         });
     } else if (type === 'wall') {
         sendMove({ type: 'activate', powerupType: 'wall' }, false);
@@ -164,20 +180,24 @@ function activatePowerup(type) {
         showModal('Geri Sar ↩️', 'Rakibi başlangıç noktasına geri göndermek istiyor musunuz? (Sıra Rakibe Geçer)', () => {
             sendMove({ type: 'activate', powerupType: 'return' }, true);
             showToast('↩️ Rakip geri gönderildi!');
+            STATE.usedPowerupsInTurn.add('return');
         });
     } else if (type === 'chaos') {
         showModal('Şaşırtma 🔀', 'Rakibin bir sonraki hamlesini şaşırtmak istiyor musunuz?', () => {
             sendMove({ type: 'activate', powerupType: 'chaos' }, true);
             showToast('🔀 Şaşırtma aktif!');
+            STATE.usedPowerupsInTurn.add('chaos');
         });
     } else if (type === 'double_turn') {
         // "Sıra bir kez daha kendisinde olur"
         sendMove({ type: 'activate', powerupType: 'double_turn' }, false); // Don't end turn yet, let logic handle
         showToast('🔁 Dejavu! Bir hamle hakkı daha!');
+        STATE.usedPowerupsInTurn.add('double_turn');
     } else if (type === 'hourglass') {
         showModal('Kum Saati ⏳', 'Rakibin toplam süresinden 10 saniye silmek istiyor musunuz? (Sıra rakibe geçer)', () => {
             sendMove({ type: 'activate', powerupType: 'hourglass' }, true);
             showToast('⏳ Kum Saati aktif!');
+            STATE.usedPowerupsInTurn.add('hourglass');
         });
     }
 }
@@ -405,10 +425,15 @@ function generatePowerup() {
         y = Math.floor(Math.random() * GRID_ROWS);
         attempts++;
 
-        // 1. Avoid Players
+        // 1. Avoid Players AND their immediate neighbors (3x3 area)
         const p1 = STATE.players.p1;
         const p2 = STATE.players.p2;
-        if ((x === p1.x && y === p1.y) || (x === p2.x && y === p2.y)) continue;
+
+        // Check if (x,y) is within 1 cell of P1
+        if (Math.abs(x - p1.x) <= 1 && Math.abs(y - p1.y) <= 1) continue;
+
+        // Check if (x,y) is within 1 cell of P2
+        if (Math.abs(x - p2.x) <= 1 && Math.abs(y - p2.y) <= 1) continue;
 
         // 2. Avoid Start Zones (Rows 0,1 and 7,8 near center)
         if ((y <= 1 || y >= GRID_ROWS - 2) && (x >= 2 && x <= 4)) continue;
@@ -1465,7 +1490,14 @@ function sendMove(moveData, endTurn = true) {
 }
 
 function updateTurnUI(turn) {
+    // Reset Powerup Usage Limits ONLY on Turn Change to Me
+    if (turn === STATE.playerId && STATE.currentTurn !== STATE.playerId) {
+        STATE.usedPowerupsInTurn.clear();
+    }
+
+    STATE.currentTurn = turn;
     STATE.isMyTurn = (turn === STATE.playerId);
+
     const p1Info = document.getElementById('p1-info');
     const p2Info = document.getElementById('p2-info');
     p1Info.classList.toggle('active', turn === 'p1');
