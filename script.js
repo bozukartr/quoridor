@@ -63,6 +63,9 @@ function init() {
                 icon.className = "fa-solid fa-check-circle";
                 icon.style.color = "#10b981";
             }
+
+            // Listen for Global Invites
+            listenForInvites(user.uid);
         }
 
         // Handle URL Invites (after Auth to ensure username is populated if possible)
@@ -387,24 +390,31 @@ class SoundManager {
 }
 const sounds = new SoundManager();
 
-function generatePowerup() {
+function generatePowerup(activePowerups = []) {
     let type, x, y, attempts = 0;
 
-    // Weighted Selection: 4-5 turns freq
+    // Count existing types
+    const timeCount = activePowerups.filter(p => p.type === 'time_bonus').length;
+    const otherCount = activePowerups.length - timeCount;
+
+    // Weighted Selection
     const weights = {
-        wall: 0.30,        // Most Common
-        destroy: 0.30,
-        ghost: 0.30,
-        freeze: 0.30,
-        return: 0.30,
-        chaos: 0.30,
-        double_turn: 0.30,
-        hourglass: 0.30,
-        star: 0.20         // Rarest
+        wall: otherCount < 3 ? 0.30 : 0,
+        destroy: otherCount < 3 ? 0.30 : 0,
+        ghost: otherCount < 3 ? 0.30 : 0,
+        freeze: otherCount < 3 ? 0.30 : 0,
+        return: otherCount < 3 ? 0.30 : 0,
+        chaos: otherCount < 3 ? 0.30 : 0,
+        double_turn: otherCount < 3 ? 0.30 : 0,
+        hourglass: otherCount < 3 ? 0.30 : 0,
+        time_bonus: timeCount < 2 ? 0.30 : 0,
+        star: otherCount < 3 ? 0.20 : 0
     };
 
     let totalWeight = 0;
     for (const key in weights) totalWeight += weights[key];
+
+    if (totalWeight === 0) return null; // Quota full
 
     const rand = Math.random() * totalWeight;
     let sum = 0;
@@ -613,7 +623,9 @@ function tryMove(targetX, targetY) {
             return: 'Geri Sar ↩️',
             chaos: 'Şaşırtma 🔀',
             double_turn: 'Dejavu 🔁',
+
             hourglass: 'Kum Saati ⏳',
+            time_bonus: '+10 Saniye ⏱️',
             star: '🌟 EFSANEVİ YILDIZ 🌟'
         };
         const pName = names[p.type] || 'Powerup';
@@ -622,6 +634,10 @@ function tryMove(targetX, targetY) {
             showToast(`🌟 EFSANEVİ! TÜM GÜÇLER EKLENDİ!`, "success");
             sounds.play('win');
             STATE.powerupCount = (STATE.powerupCount || 0) + 1; // Track Powerup
+        } else if (p.type === 'time_bonus') {
+            showToast(`⏱️ +10 Saniye Kazanıldı!`, "success");
+            sounds.play('powerup_collect');
+            STATE.powerupCount = (STATE.powerupCount || 0) + 1;
         } else {
             showToast(`${pName} Alındı!`, "success");
             sounds.play('powerup_collect');
@@ -750,10 +766,31 @@ function tryPlaceWall(x, y) {
     STATE.walls.push(tempWall);
     const p1CanReach = hasPath(STATE.players.p1.x, STATE.players.p1.y, GRID_ROWS - 1);
     const p2CanReach = hasPath(STATE.players.p2.x, STATE.players.p2.y, 0);
+
+
+    // NEW RULE: Check Powerup Accessibility
+    let powerupsBlocked = false;
+    if (STATE.powerups && STATE.powerups.length > 0) {
+        for (const p of STATE.powerups) {
+            const p1ToPowerup = hasPathToCell(STATE.players.p1.x, STATE.players.p1.y, p.x, p.y);
+            const p2ToPowerup = hasPathToCell(STATE.players.p2.x, STATE.players.p2.y, p.x, p.y);
+
+            // If NEITHER player can reach the powerup, it's considered blocked.
+            if (!p1ToPowerup && !p2ToPowerup) {
+                powerupsBlocked = true;
+                break;
+            }
+        }
+    }
+
     STATE.walls.pop();
 
     if (!p1CanReach || !p2CanReach) {
         showToast("Yolu tamamen kapatamazsın!", "error");
+        return;
+    }
+    if (powerupsBlocked) {
+        showToast("Özelliklerin önü tamamen kapatılamaz!", "error");
         return;
     }
 
@@ -772,6 +809,34 @@ function hasPath(sx, sy, targetY) {
     while (queue.length > 0) {
         const curr = queue.shift();
         if (curr.y === targetY) return true;
+
+        for (const d of dirs) {
+            const nx = curr.x + d[0];
+            const ny = curr.y + d[1];
+            if (nx >= 0 && nx < GRID_COLS && ny >= 0 && ny < GRID_ROWS) {
+                if (!visited.has(`${nx},${ny}`) && !isBlockedByWall(curr.x, curr.y, nx, ny)) {
+                    visited.add(`${nx},${ny}`);
+                    queue.push({ x: nx, y: ny });
+                }
+            }
+        }
+    }
+    return false;
+}
+
+function hasPathToCell(sx, sy, tx, ty) {
+    // Quick check: if start == target
+    if (sx === tx && sy === ty) return true;
+
+    const visited = new Set();
+    const queue = [{ x: sx, y: sy }];
+    visited.add(`${sx},${sy}`);
+    // Standard orthogonal neighbors
+    const dirs = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+
+    while (queue.length > 0) {
+        const curr = queue.shift();
+        if (curr.x === tx && curr.y === ty) return true;
 
         for (const d of dirs) {
             const nx = curr.x + d[0];
@@ -1001,6 +1066,8 @@ function renderBoard() {
             chaos: { icon: 'fa-shuffle', color: '#d946ef' },
             double_turn: { icon: 'fa-repeat', color: '#eab308' },
             hourglass: { icon: 'fa-hourglass-half', color: '#b45309' },
+
+            time_bonus: { icon: 'fa-history', color: '#3b82f6' }, // Blue instant time
             star: { icon: 'fa-star', color: '#ffd700', class: 'legendary-pulse' }
         };
 
@@ -1380,6 +1447,12 @@ function sendMove(moveData, endTurn = true) {
                     allTypes.forEach(t => {
                         updates[`${invPath}/${t}`] = (myInv[t] || 0) + 1;
                     });
+                } else if (type === 'time_bonus') {
+                    // Instant Time Bonus
+                    if (STATE.timeRemaining && STATE.timeRemaining[pid] !== undefined) {
+                        STATE.timeRemaining[pid] += 10; // Update local state first
+                        updates[`/boardState/timeRemaining/${pid}`] = STATE.timeRemaining[pid];
+                    }
                 } else {
                     updates[`${invPath}/${type}`] = (myInv[type] || 0) + 1;
                 }
@@ -1470,9 +1543,9 @@ function sendMove(moveData, endTurn = true) {
             updates['/boardState/frozenPlayer'] = null;
         }
 
-        // Spawn Logic: Max 3, 22% Chance (Approx every 4-5 turns)
-        if (currentPowerups.length < 3 && Math.random() < 0.22) {
-            const newP = generatePowerup();
+        // Spawn Logic: Max 5 Total (3 Regular + 2 Time)
+        if (currentPowerups.length < 5 && Math.random() < 0.22) {
+            const newP = generatePowerup(currentPowerups);
             if (newP) {
                 currentPowerups.push(newP);
                 updates['/boardState/powerups'] = currentPowerups;
@@ -1836,4 +1909,36 @@ async function updateUserStats(uid, isWin, opponentName, extraStats = {}) {
         showToast("İstatistik Kayıt Hatası: " + e.message, "error");
     }
 }
+
+// --- GLOBAL NOTIFICATIONS ---
+function listenForInvites(uid) {
+    const invitesRef = ref(db, `users/${uid}/gameInvites`);
+    onValue(invitesRef, (snapshot) => {
+        const invites = snapshot.val();
+        if (!invites) return;
+
+        const inviteArray = Object.entries(invites).sort((a, b) => b[1].timestamp - a[1].timestamp);
+        if (inviteArray.length === 0) return;
+
+        const [inviterUid, inviteData] = inviteArray[0];
+        // Clean up old invites (> 60 sec)
+        if (Date.now() - inviteData.timestamp > 60000) return;
+
+        showModal(
+            "🎮 Oyun Daveti",
+            `${inviteData.inviterName} seni maça davet ediyor!`,
+            () => {
+                // Accept
+                set(ref(db, `users/${uid}/gameInvites/${inviterUid}`), null);
+                window.location.href = `index.html?room=${inviteData.roomId}&join=true`;
+            },
+            () => {
+                // Reject
+                set(ref(db, `users/${uid}/gameInvites/${inviterUid}`), null);
+                showToast("Davet reddedildi.");
+            }
+        );
+    });
+}
+
 
