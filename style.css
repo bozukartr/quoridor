@@ -440,26 +440,30 @@ header {
 }
 
 /* ============================================
-   GAME BOARD
+   GAME BOARD — WebGL Canvas
    ============================================ */
 .board-container {
-    padding: 8px;
-    /* Reduced from 12px */
+    padding: 6px;
     background: var(--bg-secondary);
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-lg);
     border: 1px solid var(--border);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-shrink: 0;
 }
 
-.grid-board {
-    display: grid;
-    grid-template-columns: repeat(7, var(--cell-size));
-    grid-template-rows: repeat(9, var(--cell-size));
-    /* 7x9 */
-    gap: var(--grid-gap);
-    position: relative;
-    user-select: none;
-    margin: 0 auto;
+#board-canvas-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    line-height: 0; /* Prevent inline gap */
+}
+
+#board-canvas-container canvas {
+    border-radius: 6px;
+    display: block !important;
 }
 
 .cell {
@@ -920,10 +924,13 @@ header {
     color: #f97316;
 }
 
-/* Margin Fix */
+/* Game screen layout — tight fit for all screen sizes */
 #game-screen {
     justify-content: flex-start !important;
-    padding-top: 60px;
+    padding-top: max(54px, env(safe-area-inset-top, 0px) + 54px);
+    gap: 6px !important;
+    overflow-y: auto;
+    overflow-x: hidden;
 }
 
 /* GAME OVER & ANIMATIONS */
