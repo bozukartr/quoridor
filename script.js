@@ -2,6 +2,7 @@
 import { app, db, auth } from "./firebase-config.js";
 import { ref, set, onValue, update, push, child, get, remove } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import { GameRenderer } from "./game-renderer.js";
 
 // Game State Constants
 const GRID_COLS = 7;
@@ -26,8 +27,10 @@ const STATE = {
     usedPowerupsInTurn: new Set() // Track usage per turn
 };
 
+// --- WebGL Renderer ---
+let renderer = null;
+
 // --- DOM ELEMENTS ---
-const gridBoard = document.getElementById('grid-board');
 const screens = {
     start: document.getElementById('start-screen'),
     waiting: document.getElementById('waiting-screen'),
@@ -41,11 +44,25 @@ const controls = {
     orientationSpan: document.getElementById('wall-orientation')
 };
 
+// --- Render scheduler (throttled via rAF) ---
+let _renderPending = false;
+function scheduleRender() {
+    if (_renderPending || !renderer) return;
+    _renderPending = true;
+    requestAnimationFrame(() => {
+        _renderPending = false;
+        if (!renderer || !STATE.gameActive) return;
+        const validMoves = STATE.isMyTurn && STATE.mode === 'move'
+            ? getValidMoves(STATE.players[STATE.playerId].x, STATE.players[STATE.playerId].y)
+            : null;
+        renderer.update(STATE, STATE.pendingAction, validMoves);
+    });
+}
+
 // --- INITIALIZATION ---
 function init() {
     setupEventListeners();
-    setupTutorialListeners(); // Initialize Tutorial
-    generateGrid();
+    setupTutorialListeners();
 
     // Auto-Fill Username if Logged In
     onAuthStateChanged(auth, (user) => {
@@ -223,25 +240,22 @@ function cancelWaiting() {
     showScreen('start');
 }
 
-function generateGrid() {
-    gridBoard.innerHTML = '';
-    // Set grid columns in JS dynamically or CSS
-    gridBoard.style.gridTemplateColumns = `repeat(${GRID_COLS}, var(--cell-size))`;
-    gridBoard.style.gridTemplateRows = `repeat(${GRID_ROWS}, var(--cell-size))`;
-
-    for (let y = 0; y < GRID_ROWS; y++) {
-        for (let x = 0; x < GRID_COLS; x++) {
-            const cell = document.createElement('div');
-            cell.className = 'cell';
-            cell.dataset.x = x;
-            cell.dataset.y = y;
-            cell.addEventListener('click', (e) => handleCellClick(x, y, e));
-            cell.addEventListener('mousemove', (e) => handleCellHover(x, y, e));
-            cell.addEventListener('mouseleave', () => clearPreviews());
-            gridBoard.appendChild(cell);
-        }
-    }
+function initRenderer() {
+    const container = document.getElementById('board-canvas-container');
+    if (!container) return;
+    if (renderer) { renderer.destroy(); renderer = null; }
+    renderer = new GameRenderer(container);
+    renderer.onCellClick = handleCellClick;
+    renderer.onCellHover = handleCellHover;
+    renderer.onCellLeave = () => renderer.clearHover();
 }
+
+// Window resize → renderer resize (debounced)
+let _resizeTimer = null;
+window.addEventListener('resize', () => {
+    clearTimeout(_resizeTimer);
+    _resizeTimer = setTimeout(() => { if (renderer) { renderer._onResize(); scheduleRender(); } }, 200);
+});
 
 // --- UX HELPERS ---
 function showToast(msg, type = 'info') {
@@ -258,54 +272,32 @@ function showToast(msg, type = 'info') {
     }, 3000);
 }
 
-function handleCellHover(x, y, e) {
-    if (!STATE.gameActive || !STATE.isMyTurn || STATE.mode !== 'wall') return;
-    clearPreviews();
-
-    // Determine target based on mouse position within cell
-    let targetX = x;
-    let targetY = y;
-
-    const rect = e.target.getBoundingClientRect();
-    const offsetX = e.clientX - rect.left;
-    const offsetY = e.clientY - rect.top;
-
-    let isLeft = offsetX < rect.width / 2;
-    let isTop = offsetY < rect.height / 2;
-
-    // Flipped Board Logic (P1)
-    if (STATE.playerId === 'p1') {
-        isLeft = !isLeft;
-        isTop = !isTop;
+function handleCellHover(cx, cy, offsetX, offsetY, cellSize, isFlipped) {
+    if (!renderer) return;
+    if (!STATE.gameActive || !STATE.isMyTurn || STATE.mode !== 'wall') {
+        renderer.clearHover();
+        return;
     }
 
+    let isLeft = offsetX < cellSize / 2;
+    let isTop = offsetY < cellSize / 2;
+    if (isFlipped) { isLeft = !isLeft; isTop = !isTop; }
+
+    let targetX = cx, targetY = cy;
     if (STATE.wallOrientation === 'vertical') {
-        if (isLeft) targetX = x - 1;
+        if (isLeft) targetX = cx - 1;
     } else {
-        if (isTop) targetY = y - 1;
+        if (isTop) targetY = cy - 1;
     }
 
-    // Check validity (basic boundary check)
-    // Bounds: 0 <= x < GRID_COLS, 0 <= y < GRID_ROWS
-    if (targetX < 0 || targetY < 0) return;
-
-    let valid = true;
-    if (STATE.wallOrientation === 'vertical' && targetX >= GRID_COLS - 1) valid = false;
-    if (STATE.wallOrientation === 'horizontal' && targetY >= GRID_ROWS - 1) valid = false;
-
-    if (valid) {
-        // Show Ghost
-        const cell = document.querySelector(`.cell[data-x="${targetX}"][data-y="${targetY}"]`);
-        if (cell) {
-            const wall = document.createElement('div');
-            wall.className = `wall ${STATE.wallOrientation} preview`;
-            cell.appendChild(wall);
-        }
+    if (targetX < 0 || targetY < 0 ||
+        (STATE.wallOrientation === 'vertical' && targetX >= GRID_COLS - 1) ||
+        (STATE.wallOrientation === 'horizontal' && targetY >= GRID_ROWS - 1)) {
+        renderer.clearHover();
+        return;
     }
-}
 
-function clearPreviews() {
-    document.querySelectorAll('.wall.preview').forEach(el => el.remove());
+    renderer.setHover({ x: targetX, y: targetY, orientation: STATE.wallOrientation });
 }
 
 // --- GAME LOGIC ---
@@ -462,115 +454,82 @@ function toggleOrientation() {
     sounds.play('wall_rotate');
 }
 
-function handleCellClick(x, y, e) {
+// Called by GameRenderer with canvas-converted coordinates
+function handleCellClick(cx, cy, offsetX, offsetY, cellSize, isFlipped) {
     if (!STATE.gameActive || !STATE.isMyTurn) return;
 
     let actionType = STATE.mode;
-    let targetX = x;
-    let targetY = y;
+    let targetX = cx, targetY = cy;
     let orientation = STATE.wallOrientation;
 
-    // Calculate precise target (Nearest Gap)
-    if (e && (actionType === 'wall' || actionType === 'destroy')) {
-        const rect = e.target.getBoundingClientRect();
-        const offsetX = e.clientX - rect.left;
-        const offsetY = e.clientY - rect.top;
-
-        // Closest Gap Logic:
-        let isLeft = offsetX < rect.width / 2;
-        let isTop = offsetY < rect.height / 2;
-
-        if (STATE.playerId === 'p1') {
-            isLeft = !isLeft;
-            isTop = !isTop;
-        }
-
-        if (isLeft) targetX = x - 1;
-        if (isTop) targetY = y - 1;
+    if (actionType === 'wall' || actionType === 'destroy') {
+        let isLeft = offsetX < cellSize / 2;
+        let isTop = offsetY < cellSize / 2;
+        if (isFlipped) { isLeft = !isLeft; isTop = !isTop; }
 
         if (actionType === 'destroy') {
-            // Guess orientation based on edge proximity
-            const dx = Math.abs(offsetX / rect.width - 0.5);
-            const dy = Math.abs(offsetY / rect.height - 0.5);
-            if (dx > dy) orientation = 'vertical';
-            else orientation = 'horizontal';
+            const dx = Math.abs(offsetX / cellSize - 0.5);
+            const dy = Math.abs(offsetY / cellSize - 0.5);
+            orientation = dx > dy ? 'vertical' : 'horizontal';
+            if (isLeft) targetX = cx - 1;
+            if (isTop) targetY = cy - 1;
+        } else {
+            if (orientation === 'vertical') { if (isLeft) targetX = cx - 1; }
+            else { if (isTop) targetY = cy - 1; }
         }
     }
 
-    // Prevent out of bounds
     if (targetX < 0 || targetY < 0) return;
 
-    // --- LOGIC SPLIT ---
-    // MOVEMENT: Instant
     if (actionType === 'move') {
-        // Chaos Effect Logic (Client Side Check)
-        const myEffects = STATE.activeEffects && STATE.activeEffects[STATE.playerId];
-        if (myEffects && myEffects.chaos) {
-            // Redirect to random valid neighbor
+        const myEffects = STATE.activeEffects?.[STATE.playerId];
+        if (myEffects?.chaos) {
             const validMoves = getValidMoves(STATE.players[STATE.playerId].x, STATE.players[STATE.playerId].y);
-            // Filter out targetX/Y if possible to ensure "Ters-Düz" feel (not what I clicked)
             const others = validMoves.filter(m => m.x !== targetX || m.y !== targetY);
             const choices = others.length > 0 ? others : validMoves;
             if (choices.length > 0) {
                 const rand = choices[Math.floor(Math.random() * choices.length)];
-                targetX = rand.x;
-                targetY = rand.y;
+                targetX = rand.x; targetY = rand.y;
                 showToast("🔀 Şaşırtma etkisi! Farklı yöne gittin!", "error");
             }
         }
-
         tryMove(targetX, targetY);
         clearPendingAction();
         return;
     }
 
-    // DESTROY: Instant
     if (actionType === 'destroy') {
         tryDestroyWall(targetX, targetY, orientation);
         return;
     }
 
-    // WALLS: Two-Step Confirmation
-    const isSameAction = STATE.pendingAction &&
-        STATE.pendingAction.type === actionType &&
-        STATE.pendingAction.x === targetX &&
-        STATE.pendingAction.y === targetY &&
-        STATE.pendingAction.orientation === orientation;
+    // WALLS — two-step confirmation
+    const isSame = STATE.pendingAction?.type === actionType
+        && STATE.pendingAction?.x === targetX
+        && STATE.pendingAction?.y === targetY
+        && STATE.pendingAction?.orientation === orientation;
 
-    if (isSameAction) {
-        // CONFIRM WALL
+    if (isSame) {
         tryPlaceWall(targetX, targetY);
         clearPendingAction();
     } else {
-        // SELECT (First Tap)
-        let isValid = false;
+        let valid = targetX >= 0 && targetY >= 0;
+        if (orientation === 'vertical' && targetX >= GRID_COLS - 1) valid = false;
+        if (orientation === 'horizontal' && targetY >= GRID_ROWS - 1) valid = false;
+        if (STATE.walls.some(w => w.x === targetX && w.y === targetY && w.type === orientation)) valid = false;
 
-        // Check wall bounds
-        isValid = true;
-        if (orientation === 'vertical' && targetX >= GRID_COLS - 1) isValid = false;
-        if (orientation === 'horizontal' && targetY >= GRID_ROWS - 1) isValid = false;
-        // Check overlap (Rule: Must NOT exist for placement)
-        const exists = STATE.walls.some(w => w.x === targetX && w.y === targetY && w.type === orientation);
-        if (exists) isValid = false;
-
-        if (isValid) {
-            STATE.pendingAction = {
-                type: actionType,
-                x: targetX,
-                y: targetY,
-                orientation: orientation
-            };
-            renderBoard(); // Re-render to show selection
-        } else {
-            // Optional: Feedback for invalid tap?
-            if (actionType === 'wall') showToast("Geçersiz duvar!", "error");
+        if (valid) {
+            STATE.pendingAction = { type: actionType, x: targetX, y: targetY, orientation };
+            scheduleRender();
+        } else if (actionType === 'wall') {
+            showToast("Geçersiz duvar!", "error");
         }
     }
 }
 
 function clearPendingAction() {
     STATE.pendingAction = null;
-    renderBoard();
+    scheduleRender();
 }
 
 function tryDestroyWall(x, y, orientation) {
@@ -855,8 +814,7 @@ function hasPathToCell(sx, sy, tx, ty) {
 function updatePlayerPos(pid, x, y) {
     STATE.players[pid].x = x;
     STATE.players[pid].y = y;
-    renderBoard();
-    // checkWin(); // DISABLED: Rely on Server Win Detection for Stats
+    scheduleRender();
 }
 
 function checkWin() {
@@ -975,149 +933,8 @@ function endGame(winnerId) {
     showScreen('gameOver');
 }
 
-function renderBoard() {
-    // 1. Clear moving elements (players) and walls (absolute)
-    gridBoard.querySelectorAll('.player, .wall, .powerup-icon').forEach(e => e.remove());
-    document.querySelectorAll('.cell').forEach(c => {
-        c.classList.remove('valid-move');
-        c.classList.remove('pending-move');
-        c.innerHTML = ''; // Clear anything inside cells just in case
-    });
-
-    // 2. Metric Helper (Get current cell size dynamically)
-    const cellEl = gridBoard.querySelector('.cell');
-    if (!cellEl) return;
-    const cellSize = cellEl.offsetWidth;
-    // Assume gap is from CSS variable default or calculated
-    let gap = 3; // Fallback
-    const computedStyle = getComputedStyle(gridBoard);
-    if (computedStyle.gap) gap = parseFloat(computedStyle.gap);
-
-    // 3. Render Helper
-    const placeVisualWall = (x, y, type, classes = []) => {
-        const w = document.createElement('div');
-        w.className = `wall ${type} ${classes.join(' ')}`;
-
-        // Coords: Gap X matches Left of Col X+1? No.
-        // Gap 0 is between Col 0 and 1.
-        // Grid: [Cell0] [Gap0] [Cell1] ...
-        // Left of Gap x = (x+1)*Cell + x*Gap
-        // Center of Gap x = Left + Gap/2
-
-        let top, left;
-
-        if (type === 'vertical') {
-            // Centered on Gap X (horizontal axis)
-            // Spans Row Y to Y+1 (vertical axis)
-
-            // X-Pos (Left): (x + 1) * (cellSize + gap) - gap/2 - thickness/2 (handled by CSS center transform usually)
-            // Let's position LEFT at the start of the gap?
-            // Left of Gap X = (x+1) * cellSize + x * gap.
-            // But my CSS uses transform: translateX(-50%). So I should position 'left' at the CENTER of the gap.
-            // Center of Gap X = ((x+1) * cellSize + x * gap) + gap/2
-            // Simplifies to: (x + 1) * (cellSize + gap) - gap/2
-
-            left = (x + 1) * (cellSize + gap) - gap / 2;
-
-            // Y-Pos (Top): Top of Row Y.
-            // Top of Row Y = y * (cellSize + gap)
-            top = y * (cellSize + gap);
-        } else {
-            // Horizontal
-            // Centered on Gap Y (vertical axis)
-            // Left of Col X (horizontal axis)
-
-            // Y-Pos (Top): Center of Gap Y.
-            top = (y + 1) * (cellSize + gap) - gap / 2;
-
-            // X-Pos (Left): Left of Col X.
-            left = x * (cellSize + gap);
-        }
-
-        w.style.left = `${left}px`;
-        w.style.top = `${top}px`;
-        gridBoard.appendChild(w);
-    };
-
-    // 4. Render Actual Walls
-    STATE.walls.forEach(w => {
-        placeVisualWall(w.x, w.y, w.type, [w.owner || '']);
-    });
-
-    // 5. Render Pending Wall
-    if (STATE.pendingAction && STATE.pendingAction.type === 'wall') {
-        const pa = STATE.pendingAction;
-        placeVisualWall(pa.x, pa.y, pa.orientation, ['pending']);
-    }
-
-    // 6. Render Players
-    renderPlayer('p1');
-    renderPlayer('p2');
-
-    // 7. Render Poweru
-    // 7. Render Powerups
-    if (STATE.powerups) {
-        const types = {
-            destroy: { icon: 'fa-bomb', color: '#ef4444' },
-            ghost: { icon: 'fa-ghost', color: '#a855f7' },
-            freeze: { icon: 'fa-snowflake', color: '#0ea5e9' },
-            wall: { icon: 'fa-plus-square', color: '#f97316' },
-            return: { icon: 'fa-undo', color: '#10b981' },
-            chaos: { icon: 'fa-shuffle', color: '#d946ef' },
-            double_turn: { icon: 'fa-repeat', color: '#eab308' },
-            hourglass: { icon: 'fa-hourglass-half', color: '#b45309' },
-
-            time_bonus: { icon: 'fa-history', color: '#3b82f6' }, // Blue instant time
-            star: { icon: 'fa-star', color: '#ffd700', class: 'legendary-pulse' }
-        };
-
-        STATE.powerups.forEach(pObj => {
-            const cell = document.querySelector(`.cell[data-x="${pObj.x}"][data-y="${pObj.y}"]`);
-            if (cell) {
-                const p = types[pObj.type] || types.destroy;
-                const el = document.createElement('div');
-                el.innerHTML = `<i class="fa-solid ${p.icon}" style="color: ${p.color}; font-size: 1.2rem; filter: drop-shadow(0 0 5px ${p.color});"></i>`;
-                el.style.position = 'absolute';
-                el.style.top = '50%';
-                el.style.left = '50%';
-                el.style.transform = 'translate(-50%, -50%)';
-                el.style.zIndex = '8';
-                el.className = `powerup-icon ${p.class || ''}`;
-                cell.appendChild(el);
-            }
-        });
-    }
-
-    renderValidMoves();
-}
-
-function renderPlayer(pid) {
-    const p = STATE.players[pid];
-    const cell = document.querySelector(`.cell[data-x="${p.x}"][data-y="${p.y}"]`);
-    if (cell) {
-        const el = document.createElement('div');
-        el.className = `player ${pid === 'p1' ? 'blue' : 'red'}`;
-        cell.appendChild(el);
-    }
-}
-
-function renderValidMoves() {
-    if (!STATE.isMyTurn || STATE.mode !== 'move') return;
-
-    const me = STATE.players[STATE.playerId];
-    const moves = getValidMoves(me.x, me.y);
-
-    moves.forEach(m => {
-        const cell = document.querySelector(`.cell[data-x="${m.x}"][data-y="${m.y}"]`);
-        if (cell) cell.classList.add('valid-move');
-
-        // Pending Move Highlight (if selected via multi-step, though movement is instant now)
-        if (STATE.pendingAction && STATE.pendingAction.type === 'move' &&
-            STATE.pendingAction.x === m.x && STATE.pendingAction.y === m.y) {
-            cell.classList.add('pending-move');
-        }
-    });
-}
+// Legacy stub — actual rendering delegated to GameRenderer via scheduleRender()
+function renderBoard() { scheduleRender(); }
 
 function showScreen(name) {
     if (name !== 'gameOver') stopConfetti();
@@ -1206,16 +1023,15 @@ function joinRoom(retryCount = 0) {
                 STATE.playerId = 'p2';
                 listenGameLoop();
             } else {
-                alert("Oda dolu!");
+                showToast("Bu oda dolu!", "error");
             }
         } else {
             // Retry Mechanism for Invites
             if (retryCount < 5) {
-                console.log(`Room not found, retrying... (${retryCount + 1}/5)`);
                 showToast(`Oda aranıyor... (${retryCount + 1})`);
                 setTimeout(() => joinRoom(retryCount + 1), 1000);
             } else {
-                alert("Oda bulunamadı! (Zaman aşımı)");
+                showToast("Oda bulunamadı! Kodu kontrol et.", "error");
             }
         }
     }).catch(e => {
@@ -1276,27 +1092,28 @@ function startGame(data) {
         STATE.roomUnsubscribe = null;
     }
     STATE.gameActive = true;
-    STATE.statsRecorded = false; // Reset stats flag
-
-    // Stats Tracking Init
+    STATE.statsRecorded = false;
+    STATE.ghostMode = false;
     STATE.startTime = Date.now();
     STATE.moveCount = 0;
     STATE.powerupCount = 0;
     STATE.powerupUsage = {};
-    STATE.timeRemaining = { p1: 90, p2: 90 }; // Reset Timer
+    STATE.timeRemaining = { p1: 90, p2: 90 };
+    STATE.usedPowerupsInTurn = new Set();
 
     showScreen('game');
-    // FIXED: Truncate names to first word
     document.getElementById('p1-name').textContent = (data.p1 || 'P1').split(' ')[0];
     document.getElementById('p2-name').textContent = (data.p2 || 'P2').split(' ')[0];
+    updateHeader();
 
-    updateHeader(); // Initial timer show
-
-    // Flip for P1
-    if (STATE.playerId === 'p1') {
-        gridBoard.classList.add('flipped');
+    // Init / reset renderer
+    if (!renderer) {
+        initRenderer();
     } else {
-        gridBoard.classList.remove('flipped');
+        renderer._onResize();
+    }
+    if (renderer) {
+        renderer.setFlipped(STATE.playerId === 'p1');
     }
 
     listenGameLoop();
@@ -1394,8 +1211,10 @@ function listenGameLoop() {
             }
         }
 
-        updateTurnUI(data.turn);
-        checkWin();
+        if (STATE.gameActive) {
+            updateTurnUI(data.turn);
+            checkWin();
+        }
     });
 }
 
@@ -1616,23 +1435,23 @@ function updateTurnUI(turn) {
         timerEl.innerText = "⏳ 3";
         infoDiv.appendChild(timerEl);
 
-        // Timer Logic
+        // Hourglass countdown
         let timeLeft = 3;
-        // Clear previous interval if exists (need global ref or check)
-        if (window.turnTimer) clearInterval(window.turnTimer);
-
-        window.turnTimer = setInterval(() => {
+        if (STATE._hourglassTimer) clearInterval(STATE._hourglassTimer);
+        STATE._hourglassTimer = setInterval(() => {
             timeLeft--;
             timerEl.innerText = `⏳ ${timeLeft}`;
             if (!STATE.isMyTurn) {
-                clearInterval(window.turnTimer);
+                clearInterval(STATE._hourglassTimer);
+                STATE._hourglassTimer = null;
                 timerEl.remove();
+                return;
             }
             if (timeLeft < 0) {
-                clearInterval(window.turnTimer);
+                clearInterval(STATE._hourglassTimer);
+                STATE._hourglassTimer = null;
                 timerEl.remove();
                 if (STATE.isMyTurn) {
-                    // Timeout! Random Move
                     const validMoves = getValidMoves(STATE.players[STATE.playerId].x, STATE.players[STATE.playerId].y);
                     if (validMoves.length > 0) {
                         const rand = validMoves[Math.floor(Math.random() * validMoves.length)];
@@ -1643,11 +1462,11 @@ function updateTurnUI(turn) {
             }
         }, 1000);
     } else {
-        if (window.turnTimer) clearInterval(window.turnTimer);
+        if (STATE._hourglassTimer) { clearInterval(STATE._hourglassTimer); STATE._hourglassTimer = null; }
     }
 
     updateWallCounts();
-    renderBoard();
+    scheduleRender();
 }
 
 

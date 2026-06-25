@@ -1,226 +1,108 @@
-/* --- MOBILE MEDIA QUERIES --- */
+/* ============================================================
+   MOBILE MEDIA QUERIES — Quoridor WebGL
+   ============================================================ */
 
-/* Ultra Small Phones (Galaxy Fold Front, etc) - Width <= 320px */
+/* ── Ultra-small phones (Galaxy Fold, etc.) ≤ 320px ─────────*/
 @media (max-width: 320px) {
-    :root {
-        --cell-size: 28px;
-        --gap-size: 4px;
-    }
+    html { font-size: 13px; }
 
-    /* Global Text Scaling */
-    html {
-        font-size: 14px;
-    }
-
-    h3 {
-        font-size: 1.1rem;
-    }
-
-    /* Start Screen Compact */
     .start-content {
         padding: 0 10px;
-        margin-top: -30px;
-        /* Pull higher */
-        gap: 16px;
-        /* Reduced from 40px */
+        gap: 14px;
+        margin-top: -20px;
     }
+    .start-card { padding: 14px; gap: 10px; }
+    .app-logo { max-width: 110px; margin-bottom: 6px; }
 
-    .start-card {
-        padding: 16px;
-        gap: 12px;
-    }
+    .input-group input { padding: 8px 10px; font-size: 0.85rem; }
+    .btn { padding: 9px 14px; font-size: 0.85rem; }
 
-    .app-logo {
-        max-width: 120px;
-        margin-bottom: 8px;
-        /* Reduced from 24px */
-    }
+    .inventory-btn { width: 32px !important; height: 32px !important; font-size: 0.75rem !important; }
+    .powerup-controls { gap: 3px !important; }
 
-    .input-group input {
-        padding: 8px 12px;
-        font-size: 0.9rem;
-    }
-
-    .btn {
-        padding: 10px 16px;
-        font-size: 0.9rem;
-    }
+    .action-btn { padding: 5px 8px !important; font-size: 0.75rem !important; }
 }
 
-/* Short Screens (Landscape or small vertical) - Height <= 600px */
+/* ── Small phones (iPhone SE, older Android) ≤ 380px ────────*/
+@media (max-width: 380px) {
+    .start-content { padding: 0 14px; gap: 16px; }
+    .app-logo { max-width: 130px; }
+
+    .player-info { gap: 4px; font-size: 0.78rem; }
+    .avatar { width: 26px !important; height: 26px !important; }
+    .vs-badge { font-size: 0.55rem !important; width: 22px !important; height: 22px !important; }
+
+    .inventory-btn { width: 36px !important; height: 36px !important; font-size: 0.8rem !important; }
+    .powerup-controls { gap: 4px !important; }
+
+    /* Tutorial modal */
+    .tutorial-content { width: 95% !important; padding: 14px !important; min-height: auto !important; }
+    .tutorial-grid { grid-template-columns: repeat(3, 1fr) !important; gap: 7px !important; }
+    .tutorial-icon { width: 38px !important; height: 38px !important; font-size: 0.95rem !important; border-radius: 9px !important; }
+    #tutorial-title { font-size: 1.1rem; }
+    #tutorial-desc { font-size: 0.85rem; }
+}
+
+/* ── Standard mobile ≤ 480px ─────────────────────────────────*/
+@media (max-width: 480px) {
+    .start-content { padding: 0 16px; gap: 18px; }
+    .app-logo { max-width: 150px; margin-bottom: 8px; }
+
+    .inventory-btn { width: 40px; height: 40px; font-size: 0.85rem; }
+    .powerup-controls { gap: 5px; }
+
+    .action-btn { padding: 7px 10px; font-size: 0.82rem; }
+
+    #tutorial-modal { padding-top: 36px; align-items: flex-start; }
+    .tutorial-content { width: 93%; height: auto; border-radius: 14px; }
+    .tutorial-body { flex-direction: column; gap: 10px; }
+    .tutorial-grid { justify-content: center; width: 100%; }
+    .tutorial-info { padding: 14px; min-height: auto; }
+}
+
+/* ── Short screens (landscape or compact vertical) h ≤ 600px ─*/
 @media (max-height: 600px) {
-    .app-logo {
-        max-width: 100px;
-        margin-bottom: 10px;
-    }
+    .app-logo { max-width: 90px; margin-bottom: 6px; }
+    .start-content { gap: 8px; }
 
+    header { margin-top: 6px !important; margin-bottom: 0 !important; padding: 5px 10px !important; }
+    #header-controls { top: 4px !important; }
+
+    .controls { margin-bottom: 2px !important; padding: 3px 6px !important; }
+    .action-btn { padding: 5px 9px !important; font-size: 0.78rem !important; }
+
+    .powerup-controls { gap: 4px !important; margin-top: 1px !important; }
+    .inventory-btn { width: 34px !important; height: 34px !important; font-size: 0.78rem !important; border-radius: 7px !important; }
+}
+
+/* ── Medium height ≤ 700px ────────────────────────────────────*/
+@media (max-height: 700px) {
+    header { margin-top: 8px; margin-bottom: 2px; }
+    .controls { margin-bottom: 3px; }
+    .powerup-controls { margin-top: 2px; }
+}
+
+/* ── Tablet / large mobile ≥ 481px ──────────────────────────*/
+@media (min-width: 481px) {
+    .inventory-btn { width: 46px; height: 46px; font-size: 0.95rem; }
+    .action-btn { padding: 9px 16px; font-size: 0.9rem; }
+}
+
+/* ── Desktop / wide ≥ 768px ──────────────────────────────────*/
+@media (min-width: 768px) {
+    .start-content { max-width: 400px; }
+    header { max-width: 480px; }
+    .controls { max-width: 440px; }
+    .powerup-controls { max-width: 440px; }
+    .inventory-btn { width: 48px; height: 48px; font-size: 1rem; }
+}
+
+/* ── iOS safe areas ──────────────────────────────────────────*/
+@supports (padding: env(safe-area-inset-bottom)) {
+    #game-screen {
+        padding-bottom: max(10px, env(safe-area-inset-bottom));
+    }
     .start-content {
-        gap: 10px;
-    }
-
-    header {
-        margin-top: 10px;
-        margin-bottom: 5px;
-    }
-
-    #header-controls {
-        top: 5px;
-    }
-}
-
-/* Small Phones (iPhone SE, older Androids) - Width <= 380px */
-@media (max-width: 380px) {
-    :root {
-        --cell-size: 30px;
-    }
-
-    /* Adjust Header */
-    #header-controls {
-        width: 98%;
-        max-width: none;
-    }
-
-    .player-info {
-        gap: 4px;
-        font-size: 0.8rem;
-    }
-
-    .avatar {
-        width: 28px;
-        height: 28px;
-    }
-
-    .vs-badge {
-        font-size: 0.6rem;
-        width: 24px;
-        height: 24px;
-    }
-
-    /* Tutorial Modal Fix for Small Width */
-    .tutorial-content {
-        width: 95% !important;
-        padding: 16px !important;
-        min-height: auto !important;
-    }
-
-    .tutorial-grid {
-        grid-template-columns: repeat(3, 1fr) !important;
-        gap: 8px !important;
-        flex: 0 0 auto !important;
-    }
-
-    .tutorial-icon {
-        width: 40px;
-        height: 40px;
-        font-size: 1rem;
-        border-radius: 10px;
-    }
-
-    #tutorial-title {
-        font-size: 1.2rem;
-    }
-
-    #tutorial-desc {
-        font-size: 0.9rem;
-    }
-}
-
-/* Medium Phones (Standard) - Width <= 480px */
-@media (max-width: 480px) {
-    #tutorial-modal {
-        padding-top: 40px;
-        align-items: flex-start;
-    }
-
-    .tutorial-content {
-        width: 92%;
-        height: auto;
-        border-radius: 16px;
-    }
-
-    .tutorial-body {
-        flex-direction: column;
-        gap: 12px;
-    }
-
-    .tutorial-grid {
-        justify-content: center;
-        width: 100%;
-    }
-
-    .tutorial-info {
-        padding: 16px;
-        min-height: auto;
-    }
-
-    /* Ensure board fits vertically on small heights */
-    @media (max-height: 700px) {
-        .board-container {
-            transform: scale(0.85);
-            margin: -10px 0;
-        }
-    }
-
-    @media (max-height: 600px) {
-        .board-container {
-            transform: scale(0.75);
-            margin: -20px 0;
-        }
-
-        /* Compact Inventory for Short Screens */
-        .powerup-controls {
-            gap: 6px;
-            margin-top: 2px;
-        }
-
-        .inventory-btn {
-            width: 36px;
-            height: 36px;
-            font-size: 0.9rem;
-            border-radius: 8px;
-        }
-
-        .controls {
-            margin-bottom: 2px;
-            padding: 4px;
-        }
-
-        .action-btn {
-            padding: 6px 10px;
-            font-size: 0.8rem;
-        }
-    }
-}
-
-/* Base Mobile Adjustments for Inventory (General Mobile) */
-@media (max-width: 480px) {
-    .inventory-btn {
-        width: 42px;
-        height: 42px;
-    }
-
-    /* Start Screen Compact - General Mobile */
-    .start-content {
-        padding: 0 16px;
-        gap: 20px;
-        /* Broadly reduced from 40px */
-    }
-
-    .app-logo {
-        margin-bottom: 10px;
-        /* Broadly reduced from 24px */
-        max-width: 160px;
-    }
-}
-
-@media (max-width: 380px) {
-    .inventory-btn {
-        width: 34px;
-        height: 34px;
-        font-size: 0.8rem;
-    }
-
-    .powerup-controls {
-        gap: 4px;
+        padding-bottom: max(16px, env(safe-area-inset-bottom));
     }
 }
