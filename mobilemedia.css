@@ -65,8 +65,8 @@
     .app-logo { max-width: 90px; margin-bottom: 6px; }
     .start-content { gap: 8px; }
 
-    header { margin-top: 6px !important; margin-bottom: 0 !important; padding: 5px 10px !important; }
-    #header-controls { top: 4px !important; }
+    header { margin-top: 4px !important; margin-bottom: 0 !important; padding: 5px 10px !important; }
+    #header-controls { margin-top: 2px !important; }
 
     .controls { margin-bottom: 2px !important; padding: 3px 6px !important; }
     .action-btn { padding: 5px 9px !important; font-size: 0.78rem !important; }
@@ -77,10 +77,22 @@
 
 /* ── Medium height ≤ 700px ────────────────────────────────────*/
 @media (max-height: 700px) {
-    header { margin-top: 8px; margin-bottom: 2px; }
-    .controls { margin-bottom: 3px; }
+    header { margin-top: 6px; margin-bottom: 0; }
+    .controls { margin-bottom: 0; }
     .powerup-controls { margin-top: 2px; }
 }
+
+/* ── Landscape phones: side-by-side layout ───────────────────*/
+@media (max-height: 480px) and (orientation: landscape) {
+    #game-screen { flex-direction: row; flex-wrap: wrap; align-content: flex-start; gap: 2px !important; }
+    #header-controls { width: 100%; margin-top: 2px !important; }
+    header { width: 100%; margin-top: 2px !important; padding: 4px 10px !important; }
+    .board-container { flex: 1; min-height: 0; }
+    .controls { flex-direction: column; width: auto; padding: 4px 6px !important; }
+    .powerup-controls { flex-direction: column; width: auto; height: 100%; overflow-y: auto; overflow-x: hidden; flex-wrap: nowrap; }
+    .inventory-btn { width: 32px !important; height: 32px !important; font-size: 0.75rem !important; }
+}
+
 
 /* ── Tablet / large mobile ≥ 481px ──────────────────────────*/
 @media (min-width: 481px) {
@@ -99,9 +111,6 @@
 
 /* ── iOS safe areas ──────────────────────────────────────────*/
 @supports (padding: env(safe-area-inset-bottom)) {
-    #game-screen {
-        padding-bottom: max(10px, env(safe-area-inset-bottom));
-    }
     .start-content {
         padding-bottom: max(16px, env(safe-area-inset-bottom));
     }

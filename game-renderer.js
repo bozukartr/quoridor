@@ -24,6 +24,7 @@ export class GameRenderer {
         this._pending = null;
         this._validMoves = null;
         this._hoverWall = null;
+        this._container = container;
 
         this.onCellClick = null;
         this.onCellHover = null;
@@ -47,12 +48,18 @@ export class GameRenderer {
     _calcSize() {
         const vw = window.innerWidth;
         const vh = window.innerHeight;
-        // Reserve approx 200px for header + controls + powerups
-        const availH = vh - 210;
-        const availW = Math.min(vw - 16, 420);
+        const cont = this._container;
+        let availH, availW;
+        if (cont && cont.clientHeight > 60 && cont.clientWidth > 60) {
+            availH = cont.clientHeight - 12;
+            availW = cont.clientWidth - 12;
+        } else {
+            availH = vh - 256;
+            availW = Math.min(vw - 16, 420);
+        }
         const byH = Math.floor((availH - (this.ROWS - 1) * this.gap) / this.ROWS);
         const byW = Math.floor((availW - (this.COLS - 1) * this.gap) / this.COLS);
-        this.cs = Math.max(24, Math.min(byH, byW, 54)); // cell size
+        this.cs = Math.max(24, Math.min(byH, byW, 62));
         this.cw = this.COLS * this.cs + (this.COLS - 1) * this.gap;
         this.ch = this.ROWS * this.cs + (this.ROWS - 1) * this.gap;
     }
