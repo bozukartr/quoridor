@@ -554,6 +554,7 @@ function tryDestroyWall(x, y, orientation) {
 
     // Send destroy for the FOUND wall (use its x,y)
     sendMove({ type: 'destroy', x: wall.x, y: wall.y, orientation: wall.type });
+    setMode('move');
 }
 
 function tryMove(targetX, targetY) {
@@ -756,6 +757,7 @@ function tryPlaceWall(x, y) {
     // Send
     sendMove({ type: 'wall', x, y, orientation: STATE.wallOrientation });
     sounds.play('wall_place');
+    setMode('move');
 }
 
 function hasPath(sx, sy, targetY) {

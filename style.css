@@ -362,12 +362,9 @@ body {
    ============================================ */
 #game-screen {
     justify-content: flex-start;
-    /* Stack from top to avoid centering issues on small screens */
     align-items: center;
-    gap: 10px;
-    /* Reduced from 20px */
-    padding: 10px 0;
-    /* Add vertical padding */
+    gap: 4px;
+    padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px);
     height: 100dvh;
     width: 100vw;
     position: relative;
@@ -386,7 +383,7 @@ header {
     backdrop-filter: blur(20px);
     border-radius: var(--radius-lg);
     border: 1px solid var(--border);
-    margin-top: max(10px, env(safe-area-inset-top));
+    margin-top: 4px;
     box-shadow: var(--shadow-md);
     z-index: 50;
     flex-shrink: 0;
@@ -451,7 +448,10 @@ header {
     display: flex;
     justify-content: center;
     align-items: center;
-    flex-shrink: 0;
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
 }
 
 #board-canvas-container {
@@ -589,8 +589,7 @@ header {
    CONTROLS
    ============================================ */
 .controls {
-    margin-bottom: max(10px, env(safe-area-inset-bottom));
-    /* Reduced from 24px */
+    margin-bottom: 0;
     display: flex;
     background: var(--bg-secondary);
     padding: 8px;
@@ -858,20 +857,29 @@ header {
 
 /* Inventory UI */
 .powerup-controls {
-    display: grid;
-    grid-template-columns: repeat(4, max-content);
-    grid-template-rows: auto auto;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
     justify-content: center;
-    gap: 10px;
-    margin-top: 5px;
+    gap: 6px;
+    margin-top: 4px;
+    margin-bottom: 0;
     width: 100%;
+    max-width: 100vw;
+    flex-shrink: 0;
+    padding: 4px 6px;
 }
+.powerup-controls::-webkit-scrollbar { display: none; }
 
 .inventory-btn {
     position: relative;
-    width: 50px;
-    height: 50px;
-    border-radius: 12px;
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    flex-shrink: 0;
     background: rgba(255, 255, 255, 0.1);
     border: 1px solid rgba(255, 255, 255, 0.2);
     color: white;
@@ -924,14 +932,6 @@ header {
     color: #f97316;
 }
 
-/* Game screen layout — tight fit for all screen sizes */
-#game-screen {
-    justify-content: flex-start !important;
-    padding-top: max(54px, env(safe-area-inset-top, 0px) + 54px);
-    gap: 6px !important;
-    overflow-y: auto;
-    overflow-x: hidden;
-}
 
 /* GAME OVER & ANIMATIONS */
 @keyframes popIn {
@@ -1172,20 +1172,10 @@ header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 6px;
-    position: absolute;
-    /* Fix for stacking */
-    top: 10px;
-    left: 50%;
-    transform: translateX(-50%);
+    margin-top: 6px;
+    margin-bottom: 0;
+    flex-shrink: 0;
     z-index: 60;
-    /* Above header */
-}
-
-/* Adjust Header to sit below controls */
-header {
-    margin-top: 50px;
-    /* Push down */
 }
 
 /* Adjust buttons */
@@ -1279,8 +1269,6 @@ header {
     margin-bottom: 24px;
     line-height: 1.5;
 }
-
-
 
 /* NEW POWERUPS */
 #btn-return.active i {
@@ -1297,148 +1285,6 @@ header {
 
 #btn-hourglass.active i {
     color: #b45309;
-}
-
-/* LEGENDARY STAR ANIMATION */
-@keyframes pulseGlow {
-    0% {
-        transform: translate(-50%, -50%) scale(1);
-        filter: drop-shadow(0 0 5px #ffd700);
-    }
-
-    50% {
-        transform: translate(-50%, -50%) scale(1.3);
-        filter: drop-shadow(0 0 15px #ffd700);
-    }
-
-    100% {
-        transform: translate(-50%, -50%) scale(1);
-        filter: drop-shadow(0 0 5px #ffd700);
-    }
-}
-
-.legendary-pulse {
-    animation: pulseGlow 1.5s infinite ease-in-out;
-}
-
-/* HEADER CONTROLS */
-#header-controls {
-    width: 90%;
-    max-width: 440px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 6px;
-    position: absolute;
-    /* Fix for stacking */
-    top: 10px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 60;
-    /* Above header */
-}
-
-/* Adjust Header to sit below controls */
-header {
-    margin-top: 50px;
-    /* Push down */
-}
-
-/* Adjust buttons */
-.icon-btn {
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
-    border: 1px solid var(--border);
-    background: var(--bg-elevated);
-    color: var(--text-secondary);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    cursor: pointer;
-    transition: all 0.2s;
-    font-size: 1rem;
-    box-shadow: var(--shadow-sm);
-    backdrop-filter: blur(10px);
-}
-
-.icon-btn:active {
-    transform: scale(0.9);
-}
-
-.icon-btn.red {
-    color: #ef4444;
-    border-color: rgba(239, 68, 68, 0.3);
-}
-
-.icon-btn.red:hover {
-    background: rgba(239, 68, 68, 0.1);
-}
-
-.icon-btn.white {
-    color: #ffffff;
-    border-color: rgba(255, 255, 255, 0.3);
-}
-
-/* MODAL */
-#modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    background: rgba(0, 0, 0, 0.6);
-    backdrop-filter: blur(5px);
-    z-index: 2000;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-}
-
-#modal-overlay.hidden {
-    display: none;
-}
-
-#custom-modal {
-    background: var(--bg-elevated);
-    border: 1px solid var(--border);
-    padding: 24px;
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-lg);
-    width: 90%;
-    max-width: 320px;
-    text-align: center;
-    animation: scaleIn 0.2s ease-out;
-}
-
-@keyframes scaleIn {
-    from {
-        transform: scale(0.9);
-        opacity: 0;
-    }
-
-    to {
-        transform: scale(1);
-        opacity: 1;
-    }
-}
-
-#modal-title {
-    margin: 0 0 12px 0;
-    font-size: 1.2rem;
-    color: var(--text-primary);
-}
-
-#modal-message {
-    color: var(--text-secondary);
-    font-size: 0.95rem;
-    margin-bottom: 24px;
-    line-height: 1.5;
-}
-
-.modal-actions {
-    display: flex;
-    gap: 12px;
 }
 
 /* SOUND CONTROLS - HEADER EXPANDABLE */
