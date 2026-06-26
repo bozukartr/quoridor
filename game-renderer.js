@@ -54,7 +54,6 @@ export class GameRenderer {
             availH = cont.clientHeight - 12;
             availW = cont.clientWidth - 12;
         } else {
-            // Fallback: header-controls(42) + header(60) + controls(50) + powerups(60) + gaps(24) + safe(20)
             availH = vh - 256;
             availW = Math.min(vw - 16, 420);
         }

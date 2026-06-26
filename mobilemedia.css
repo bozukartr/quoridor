@@ -93,6 +93,7 @@
     .inventory-btn { width: 32px !important; height: 32px !important; font-size: 0.75rem !important; }
 }
 
+
 /* ── Tablet / large mobile ≥ 481px ──────────────────────────*/
 @media (min-width: 481px) {
     .inventory-btn { width: 46px; height: 46px; font-size: 0.95rem; }
