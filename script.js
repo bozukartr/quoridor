@@ -4,7 +4,7 @@ import { ref, set, onValue, update, push, child, get, remove } from "https://www
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { GameRenderer } from "./game-renderer.js";
 import { LocalRoom } from "./local-room.js";
-import { chooseAiAction, aiThinkDelay, AI_LEVELS, getValidMoves as aiValidMoves } from "./ai.js";
+import { chooseAiAction, aiThinkDelay, AI_LEVELS, getValidMoves as aiValidMoves, distanceToGoal, goalRowFor } from "./ai.js";
 
 // Game State Constants
 const GRID_COLS = 7;
@@ -232,6 +232,10 @@ function activatePowerup(type) {
         sendMove({ type: 'activate', powerupType: 'wall' }, false);
         showToast('🧱 +1 Duvar kazandınız!');
     } else if (type === 'return') {
+        if (!canReturnOpponent()) {
+            showToast('Rakibin başlangıç noktası duvarlarla kapalı — şu an geri gönderemezsin!', 'error');
+            return;
+        }
         showModal('Geri Sar ↩️', 'Rakibi başlangıç noktasına geri göndermek istiyor musunuz? (Sıra Rakibe Geçer)', () => {
             sendMove({ type: 'activate', powerupType: 'return' }, true);
             showToast('↩️ Rakip geri gönderildi!');
@@ -848,6 +852,36 @@ function hasPathToCell(sx, sy, tx, ty) {
     return false;
 }
 
+// Tahtanın ai.js kural yardımcılarının beklediği biçimde kopyası.
+function boardSnapshot() {
+    return {
+        cols: GRID_COLS,
+        rows: GRID_ROWS,
+        walls: (STATE.walls || []).map(w => ({ x: w.x, y: w.y, type: w.type })),
+        powerups: (STATE.powerups || []).map(p => ({ ...p })),
+        players: {
+            p1: { ...STATE.players.p1, inventory: { ...(STATE.players.p1.inventory || {}) } },
+            p2: { ...STATE.players.p2, inventory: { ...(STATE.players.p2.inventory || {}) } }
+        },
+        timeRemaining: { ...STATE.timeRemaining },
+        frozenPlayer: STATE.frozenPlayer || null,
+        activeEffects: STATE.activeEffects || {}
+    };
+}
+
+// "Geri Sar" rakibi başlangıç karesine ışınlar. O kare duvarlarla tamamen
+// kapatılmışsa rakip hedefe hiç ulaşamaz ve oyun süre bitene kadar kilitlenir;
+// bu yüzden önce başlangıçtan bir yol kaldığını doğrula.
+function canReturnOpponent() {
+    const oppId = STATE.playerId === 'p1' ? 'p2' : 'p1';
+    const startX = Math.floor(GRID_COLS / 2);
+    const startY = oppId === 'p2' ? GRID_ROWS - 1 : 0;
+
+    const snapshot = boardSnapshot();
+    snapshot.players[oppId] = { ...snapshot.players[oppId], x: startX, y: startY };
+    return distanceToGoal(snapshot, startX, startY, goalRowFor(oppId, GRID_ROWS)) !== Infinity;
+}
+
 function updatePlayerPos(pid, x, y) {
     STATE.players[pid].x = x;
     STATE.players[pid].y = y;
@@ -1009,22 +1043,6 @@ function startAIGame(level) {
     startGame(data);
 }
 
-function aiSnapshot() {
-    return {
-        cols: GRID_COLS,
-        rows: GRID_ROWS,
-        walls: (STATE.walls || []).map(w => ({ x: w.x, y: w.y, type: w.type })),
-        powerups: (STATE.powerups || []).map(p => ({ ...p })),
-        players: {
-            p1: { ...STATE.players.p1, inventory: { ...(STATE.players.p1.inventory || {}) } },
-            p2: { ...STATE.players.p2, inventory: { ...(STATE.players.p2.inventory || {}) } }
-        },
-        timeRemaining: { ...STATE.timeRemaining },
-        frozenPlayer: STATE.frozenPlayer || null,
-        activeEffects: STATE.activeEffects || {}
-    };
-}
-
 function maybeRunAI(data) {
     if (!STATE.vsAI || !STATE.gameActive || STATE.aiThinking) return;
     if (data.boardState && data.boardState.winner) return;
@@ -1047,7 +1065,7 @@ function maybeRunAI(data) {
 function aiTakeTurn() {
     if (!STATE.vsAI || !STATE.gameActive || STATE.currentTurn !== AI_PID) return;
 
-    const snapshot = aiSnapshot();
+    const snapshot = boardSnapshot();
     const { pre, main } = chooseAiAction(snapshot, { pid: AI_PID, level: STATE.aiLevel });
 
     if (!main) {
