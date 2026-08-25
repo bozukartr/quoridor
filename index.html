@@ -183,12 +183,22 @@
                 <div id="board-canvas-container"></div>
             </div>
 
+            <!-- Duvarlar tahtaya sürüklenerek konur; tahta her zaman hareket modundadır -->
             <div class="controls">
-                <button id="move-mode-btn" class="action-btn active"><i class="fa-solid fa-person-walking"></i>
-                    Hareket</button>
-                <button id="wall-mode-btn" class="action-btn"><i class="fa-solid fa-block-brick"></i> Duvar</button>
-                <button id="wall-rotate-btn" class="action-btn hidden"><i class="fa-solid fa-rotate"></i> <span
-                        id="wall-orientation">Dikey</span></button>
+                <button id="wall-drag-vertical" class="wall-drag-btn" data-orientation="vertical"
+                    aria-label="Dikey duvarı tahtaya sürükle">
+                    <span class="wall-glyph vertical"></span>
+                    <span class="wall-drag-label">Dikey</span>
+                </button>
+                <div class="wall-count" id="wall-count" aria-label="Kalan duvar">
+                    <span id="wall-count-value">8</span>
+                    <span class="wall-count-label">duvar</span>
+                </div>
+                <button id="wall-drag-horizontal" class="wall-drag-btn" data-orientation="horizontal"
+                    aria-label="Yatay duvarı tahtaya sürükle">
+                    <span class="wall-glyph horizontal"></span>
+                    <span class="wall-drag-label">Yatay</span>
+                </button>
             </div>
 
             <div class="powerup-controls">

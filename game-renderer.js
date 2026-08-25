@@ -136,6 +136,61 @@ export class GameRenderer {
         return { x: (this.COLS - 2 - gx) * (cs + g), y: (this.ROWS - 1 - gy) * (cs + g) - g / 2 - thick / 2, w: 2 * cs + g, h: thick };
     }
 
+    // Canvas pikseli → verilen yöndeki EN YAKIN duvar yuvası (data koordinatı).
+    // _wp'nin tersidir: yuva merkezine olan gerçek mesafeye göre snap eder.
+    slotAt(px, py, type) {
+        const step = this.cs + this.gap;
+        let gx, gy;
+        if (type === 'vertical') {
+            // Dikey yuva (gx,gy): merkez = ((gx+1)*step - gap/2, gy*step + cs + gap/2)
+            gx = Math.round((px + this.gap / 2) / step) - 1;
+            gy = Math.round((py - this.cs - this.gap / 2) / step);
+        } else {
+            gx = Math.round((px - this.cs - this.gap / 2) / step);
+            gy = Math.round((py + this.gap / 2) / step) - 1;
+        }
+        const vx = Math.max(0, Math.min(this.COLS - 2, gx));
+        const vy = Math.max(0, Math.min(this.ROWS - 2, gy));
+        // Görüntü koordinatı → data koordinatı (tahta çevrilmişse aynala).
+        // _wp iki yönde de aynı aynalamayı kullanıyor.
+        return this.isFlipped
+            ? { x: this.COLS - 2 - vx, y: this.ROWS - 2 - vy }
+            : { x: vx, y: vy };
+    }
+
+    // Ekran (client) koordinatı → canvas içi piksel. Sürükleme canvas dışında
+    // başladığı için pointer olayları buraya gelmiyor, dönüşümü dışarıya açıyoruz.
+    clientToCanvas(clientX, clientY) {
+        const r = this.app.view.getBoundingClientRect();
+        return {
+            x: (clientX - r.left) * (this.cw / r.width),
+            y: (clientY - r.top) * (this.ch / r.height),
+            inside: clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom,
+            rect: r
+        };
+    }
+
+    // Bir karenin ekran üzerindeki yüksekliği — sürükleme ofsetini buna göre ayarlarız.
+    get cellScreenSize() {
+        const r = this.app.view.getBoundingClientRect();
+        return (this.cs + this.gap) * (r.height / this.ch);
+    }
+
+    // Canvas pikseline en yakın duvarı bulur (duvar kırıcı sürüklemesi için).
+    nearestWall(px, py, walls, maxDist) {
+        let best = null, bestD = Infinity;
+        for (const w of (walls || [])) {
+            const r = this._wp(w.x, w.y, w.type);
+            const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+            // Dikdörtgene olan mesafe (uzun kenar boyunca tolerans daha yüksek)
+            const dx = Math.max(0, Math.abs(px - cx) - r.w / 2);
+            const dy = Math.max(0, Math.abs(py - cy) - r.h / 2);
+            const d = Math.hypot(dx, dy);
+            if (d < bestD) { bestD = d; best = w; }
+        }
+        return bestD <= (maxDist ?? this.cs * 0.8) ? best : null;
+    }
+
     // ─── Grid background ──────────────────────────────────────────────────────
 
     _drawGrid() {
@@ -196,8 +251,10 @@ export class GameRenderer {
             if (this.onCellHover) this.onCellHover(cx, cy, ox, oy, this.cs, this.isFlipped);
         }, { passive: true });
 
-        cv.addEventListener('pointerleave', () => { this.clearHover(); if (this.onCellLeave) this.onCellLeave(); });
-        cv.addEventListener('pointercancel', () => { this.clearHover(); if (this.onCellLeave) this.onCellLeave(); });
+        // Not: hayaleti burada temizlemiyoruz — sürükleme oturumu canvas dışında
+        // (düğme üzerinde) yaşıyor ve hayaletin sahibi o.
+        cv.addEventListener('pointerleave', () => { if (this.onCellLeave) this.onCellLeave(); });
+        cv.addEventListener('pointercancel', () => { if (this.onCellLeave) this.onCellLeave(); });
         cv.addEventListener('contextmenu', e => e.preventDefault());
     }
 
@@ -320,16 +377,47 @@ export class GameRenderer {
         });
     }
 
-    // ─── Hover ────────────────────────────────────────────────────────────────
+    // ─── Sürükleme hayaleti ───────────────────────────────────────────────────
 
-    setHover(wallInfo) {
-        this._hoverWall = wallInfo;
+    /**
+     * Sürükleme sırasında gösterilen hayalet.
+     *  { kind: 'wall', x, y, orientation, valid }  → yuvaya oturmuş duvar (yeşil/kırmızı)
+     *  { kind: 'destroy', wall }                   → hedeflenen duvar (yoksa wall: null)
+     *  null                                        → temizle
+     */
+    setDragGhost(ghost) {
+        this._hoverWall = ghost;
         const g = this.hoverG;
         g.clear();
-        if (!wallInfo) return;
-        const r = this._wp(wallInfo.x, wallInfo.y, wallInfo.orientation);
-        g.beginFill(0x5b7cff, 0.42).drawRoundedRect(r.x, r.y, r.w, r.h, 2).endFill();
-        g.lineStyle(1, 0x8fa4ff, 0.6).drawRoundedRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2, 2).lineStyle(0);
+        if (!ghost) return;
+
+        if (ghost.kind === 'destroy') {
+            if (!ghost.wall) return;
+            const r = this._wp(ghost.wall.x, ghost.wall.y, ghost.wall.type);
+            g.beginFill(0xef4444, 0.55).drawRoundedRect(r.x, r.y, r.w, r.h, 2).endFill();
+            // Duvarın ortasına çarpı
+            const cx = r.x + r.w / 2, cy = r.y + r.h / 2, s = Math.max(8, this.cs * 0.26);
+            g.lineStyle(Math.max(3, this.cs * 0.07), 0xff6b6b, 0.95);
+            g.moveTo(cx - s, cy - s).lineTo(cx + s, cy + s);
+            g.moveTo(cx + s, cy - s).lineTo(cx - s, cy + s);
+            g.lineStyle(0);
+            return;
+        }
+
+        const r = this._wp(ghost.x, ghost.y, ghost.orientation);
+        const fill = ghost.valid ? 0x22c55e : 0xef4444;
+        const line = ghost.valid ? 0x86efac : 0xfca5a5;
+        g.beginFill(fill, 0.5).drawRoundedRect(r.x, r.y, r.w, r.h, 2).endFill();
+        g.lineStyle(1.5, line, 0.85).drawRoundedRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2, 2).lineStyle(0);
+        // Yuvanın iki ucuna küçük işaret: hangi boşluğa oturduğu net görünsün
+        const capR = Math.max(2, this.cs * 0.06);
+        g.beginFill(line, 0.9);
+        if (ghost.orientation === 'vertical') {
+            g.drawCircle(r.x + r.w / 2, r.y + capR, capR).drawCircle(r.x + r.w / 2, r.y + r.h - capR, capR);
+        } else {
+            g.drawCircle(r.x + capR, r.y + r.h / 2, capR).drawCircle(r.x + r.w - capR, r.y + r.h / 2, capR);
+        }
+        g.endFill();
     }
 
     clearHover() {
