@@ -316,6 +316,40 @@ body {
     gap: 12px;
 }
 
+/* Tek kişilik mod: zorluk seçimi */
+.difficulty-select {
+    display: flex;
+    gap: 6px;
+    padding: 4px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+}
+
+.diff-btn {
+    flex: 1;
+    padding: 8px 4px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-secondary);
+    font-family: inherit;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.diff-btn:hover {
+    color: var(--text-primary);
+}
+
+.diff-btn.active {
+    background: var(--primary);
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(91, 124, 255, 0.35);
+}
+
 /* ============================================
    WAITING SCREEN
    ============================================ */
