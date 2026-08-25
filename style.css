@@ -439,16 +439,19 @@ header {
 /* ============================================
    GAME BOARD — WebGL Canvas
    ============================================ */
+/* The container is the measuring area: it takes the space the layout gives it and
+   never derives its size from the canvas inside — otherwise it shrink-wraps its own
+   child and the ResizeObserver keeps collapsing the board. The card styling lives on
+   the canvas so the frame hugs the board instead of leaving dead space around it. */
 .board-container {
-    padding: 6px;
-    background: var(--bg-secondary);
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-lg);
-    border: 1px solid var(--border);
+    padding: 4px;
     display: flex;
     justify-content: center;
     align-items: center;
-    flex: 1;
+    flex: 1 1 auto;
+    width: calc(100% - 8px);
+    max-width: 560px;
+    align-self: center;
     min-height: 0;
     min-width: 0;
     overflow: hidden;
@@ -458,12 +461,17 @@ header {
     display: flex;
     justify-content: center;
     align-items: center;
+    width: 100%;
+    height: 100%;
     line-height: 0; /* Prevent inline gap */
 }
 
 #board-canvas-container canvas {
-    border-radius: 6px;
+    border-radius: 10px;
     display: block !important;
+    background: var(--bg-secondary);
+    /* Ring drawn with a shadow, not a border, so it never eats canvas pixels. */
+    box-shadow: 0 0 0 1px var(--border), var(--shadow-lg);
 }
 
 .cell {

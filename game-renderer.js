@@ -50,16 +50,20 @@ export class GameRenderer {
         const vh = window.innerHeight;
         const cont = this._container;
         let availH, availW;
-        if (cont && cont.clientHeight > 60 && cont.clientWidth > 60) {
-            availH = cont.clientHeight - 12;
-            availW = cont.clientWidth - 12;
+        // #board-canvas-container is sized by CSS (100% of the board card), so its
+        // box is the real available space and not a shrink-wrap of the canvas.
+        if (cont && cont.clientHeight > 40 && cont.clientWidth > 40) {
+            const st = getComputedStyle(cont);
+            availW = cont.clientWidth - (parseFloat(st.paddingLeft) || 0) - (parseFloat(st.paddingRight) || 0);
+            availH = cont.clientHeight - (parseFloat(st.paddingTop) || 0) - (parseFloat(st.paddingBottom) || 0);
         } else {
-            availH = vh - 256;
-            availW = Math.min(vw - 16, 420);
+            availH = vh - 240;
+            availW = Math.min(vw - 20, 548);
         }
+        this.gap = availW < 300 ? 3 : 4;
         const byH = Math.floor((availH - (this.ROWS - 1) * this.gap) / this.ROWS);
         const byW = Math.floor((availW - (this.COLS - 1) * this.gap) / this.COLS);
-        this.cs = Math.max(24, Math.min(byH, byW, 62));
+        this.cs = Math.max(20, Math.min(byH, byW, 96));
         this.cw = this.COLS * this.cs + (this.COLS - 1) * this.gap;
         this.ch = this.ROWS * this.cs + (this.ROWS - 1) * this.gap;
     }
@@ -344,8 +348,11 @@ export class GameRenderer {
     }
 
     _onResize() {
+        const pw = this.cw, ph = this.ch;
         this._calcSize();
-        this.app.renderer.resize(this.cw, this.ch);
+        // Only touch the renderer when the size really changed, so a ResizeObserver
+        // tick can never feed back into another resize.
+        if (this.cw !== pw || this.ch !== ph) this.app.renderer.resize(this.cw, this.ch);
         this._drawGrid();
         this.clearHover();
         if (this._state) this.update(this._state, this._pending, this._validMoves);

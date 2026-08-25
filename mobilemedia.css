@@ -82,15 +82,64 @@
     .powerup-controls { margin-top: 2px; }
 }
 
-/* ── Landscape phones: side-by-side layout ───────────────────*/
+/* ── Landscape phones: board in the middle, UI in side columns ───
+   Grid instead of wrapping flex so the board keeps the full screen height and
+   its column is sized by the layout, never by the canvas inside it. */
 @media (max-height: 480px) and (orientation: landscape) {
-    #game-screen { flex-direction: row; flex-wrap: wrap; align-content: flex-start; gap: 2px !important; }
-    #header-controls { width: 100%; margin-top: 2px !important; }
-    header { width: 100%; margin-top: 2px !important; padding: 4px 10px !important; }
-    .board-container { flex: 1; min-height: 0; }
-    .controls { flex-direction: column; width: auto; padding: 4px 6px !important; }
-    .powerup-controls { flex-direction: column; width: auto; height: 100%; overflow-y: auto; overflow-x: hidden; flex-wrap: nowrap; }
+    #game-screen.active {
+        display: grid;
+        grid-template-columns: minmax(140px, 1fr) minmax(0, 2fr) minmax(140px, 1fr);
+        grid-template-rows: auto minmax(0, 1fr);
+        grid-template-areas:
+            "hctrl board ctrl"
+            "hdr   board pwr";
+        align-items: center;
+        gap: 4px;
+        padding: 4px;
+    }
+    #header-controls { grid-area: hctrl; width: 100%; max-width: 100%; margin-top: 0 !important; }
+    /* Stacked players so the header fits its narrow column instead of spilling
+       over the board. */
+    header {
+        grid-area: hdr;
+        width: 100%;
+        max-width: 100%;
+        margin-top: 0 !important;
+        padding: 6px 8px !important;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 6px;
+    }
+    .board-container {
+        grid-area: board;
+        width: 100%;
+        max-width: 100%;
+        height: 100%;
+        align-self: stretch;
+        padding: 2px;
+    }
+    .controls { grid-area: ctrl; width: 100%; max-width: 100%; padding: 4px 6px !important; }
+    .powerup-controls {
+        grid-area: pwr;
+        width: 100%;
+        max-width: 100%;
+        flex-wrap: wrap;
+        overflow: visible;
+        margin-top: 0;
+        padding: 2px;
+        gap: 4px;
+    }
     .inventory-btn { width: 32px !important; height: 32px !important; font-size: 0.75rem !important; }
+
+    header .game-status { display: none; }
+    .player-info { gap: 6px; font-size: 0.75rem; min-width: 0; justify-content: flex-start; }
+    .player-info.p2 { flex-direction: row-reverse; justify-content: flex-end; }
+    .player-details { min-width: 0; }
+    .player-details.right { align-items: flex-start; }
+    .player-details span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .avatar { width: 24px !important; height: 24px !important; flex-shrink: 0; }
+    .timer-display { font-size: 0.75rem !important; }
+    .icon-btn { width: 30px; height: 30px; font-size: 0.85rem; }
 }
 
 
