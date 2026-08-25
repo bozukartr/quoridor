@@ -3,6 +3,8 @@ import { app, db, auth } from "./firebase-config.js";
 import { ref, set, onValue, update, push, child, get, remove } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { GameRenderer } from "./game-renderer.js";
+import { LocalRoom } from "./local-room.js";
+import { chooseAiAction, aiThinkDelay, AI_LEVELS, getValidMoves as aiValidMoves } from "./ai.js";
 
 // Game State Constants
 const GRID_COLS = 7;
@@ -24,8 +26,30 @@ const STATE = {
     activeEffects: { p1: { chaos: false, hourglass: false }, p2: { chaos: false, hourglass: false } }, // New State
     timeRemaining: { p1: 90, p2: 90 }, // Chess Timer (Seconds)
     pendingAction: null, // { type: 'move'|'wall', x, y, orientation? }
-    usedPowerupsInTurn: new Set() // Track usage per turn
+    usedPowerupsInTurn: new Set(), // Track usage per turn
+    vsAI: false, // Tek kişilik mod (yapay zekaya karşı)
+    aiLevel: 'medium', // 'easy' | 'medium' | 'hard'
+    localRoom: null, // Tek kişilik modda Firebase yerine kullanılan yerel oda
+    aiThinking: false
 };
+
+const AI_PID = 'p2'; // Yapay zeka her zaman p2 olarak oynar
+
+// --- ODA ERİŞİMİ (çevrimiçi: Firebase, tek kişilik: yerel oda) ---
+function roomUpdate(updates) {
+    if (STATE.vsAI) {
+        if (STATE.localRoom) STATE.localRoom.update(updates);
+        return;
+    }
+    update(ref(db, 'rooms/' + STATE.roomId), updates);
+}
+
+function roomSubscribe(callback) {
+    if (STATE.vsAI) {
+        return STATE.localRoom ? STATE.localRoom.onValue(callback) : () => { };
+    }
+    return onValue(ref(db, 'rooms/' + STATE.roomId), callback);
+}
 
 // --- WebGL Renderer ---
 let renderer = null;
@@ -110,6 +134,17 @@ function setupEventListeners() {
     // Buttons
     document.getElementById('create-room-btn').addEventListener('click', createRoom);
     document.getElementById('join-room-btn').addEventListener('click', joinRoom);
+
+    // Tek kişilik mod: zorluk seçimi + başlat
+    document.querySelectorAll('#ai-difficulty .diff-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('#ai-difficulty .diff-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            STATE.aiLevel = btn.dataset.level;
+        });
+    });
+    const playAiBtn = document.getElementById('play-ai-btn');
+    if (playAiBtn) playAiBtn.addEventListener('click', () => startAIGame(STATE.aiLevel));
     document.getElementById('restart-btn').addEventListener('click', () => location.reload()); // Main Menu
     document.getElementById('rematch-btn').addEventListener('click', resetRoom); // Rematch
     document.getElementById('cancel-room-btn').addEventListener('click', cancelWaiting);
@@ -944,23 +979,246 @@ function showScreen(name) {
     screens[name].classList.add('active');
 }
 
+// --- TEK KİŞİLİK MOD (YAPAY ZEKA) ---
+
+function startAIGame(level) {
+    const username = document.getElementById('username-input').value || 'Sen';
+    const aiLevel = AI_LEVELS[level] ? level : 'medium';
+
+    // Varsa önceki oyunu temizle
+    if (STATE.roomUnsubscribe) { STATE.roomUnsubscribe(); STATE.roomUnsubscribe = null; }
+    if (STATE.aiTimer) { clearTimeout(STATE.aiTimer); STATE.aiTimer = null; }
+    if (STATE.localRoom) STATE.localRoom.destroy();
+
+    STATE.vsAI = true;
+    STATE.aiLevel = aiLevel;
+    STATE.aiThinking = false;
+    STATE.roomId = 'local-ai';
+    STATE.playerId = 'p1';
+    STATE.gameActive = false;
+
+    const data = {
+        p1: username,
+        p2: `Bot (${AI_LEVELS[aiLevel].label})`,
+        turn: Math.random() < 0.5 ? 'p1' : 'p2',
+        status: 'active',
+        boardState: createInitialBoardState()
+    };
+
+    STATE.localRoom = new LocalRoom(data);
+    startGame(data);
+}
+
+function aiSnapshot() {
+    return {
+        cols: GRID_COLS,
+        rows: GRID_ROWS,
+        walls: (STATE.walls || []).map(w => ({ x: w.x, y: w.y, type: w.type })),
+        powerups: (STATE.powerups || []).map(p => ({ ...p })),
+        players: {
+            p1: { ...STATE.players.p1, inventory: { ...(STATE.players.p1.inventory || {}) } },
+            p2: { ...STATE.players.p2, inventory: { ...(STATE.players.p2.inventory || {}) } }
+        },
+        timeRemaining: { ...STATE.timeRemaining },
+        frozenPlayer: STATE.frozenPlayer || null,
+        activeEffects: STATE.activeEffects || {}
+    };
+}
+
+function maybeRunAI(data) {
+    if (!STATE.vsAI || !STATE.gameActive || STATE.aiThinking) return;
+    if (data.boardState && data.boardState.winner) return;
+    if (data.turn !== AI_PID) return;
+
+    STATE.aiThinking = true;
+    STATE.aiTimer = setTimeout(() => {
+        STATE.aiTimer = null;
+        try {
+            aiTakeTurn();
+        } catch (e) {
+            console.error('AI hatası:', e);
+            roomUpdate({ '/turn': STATE.playerId }); // Oyun kilitlenmesin
+        } finally {
+            STATE.aiThinking = false;
+        }
+    }, aiThinkDelay(STATE.aiLevel));
+}
+
+function aiTakeTurn() {
+    if (!STATE.vsAI || !STATE.gameActive || STATE.currentTurn !== AI_PID) return;
+
+    const snapshot = aiSnapshot();
+    const { pre, main } = chooseAiAction(snapshot, { pid: AI_PID, level: STATE.aiLevel });
+
+    if (!main) {
+        roomUpdate({ '/turn': STATE.playerId });
+        return;
+    }
+    aiApplyAction(snapshot, pre, main);
+}
+
+// Yapay zekanın turunu tek bir güncellemede uygular (sendMove'un p2 karşılığı).
+function aiApplyAction(snapshot, pre, main) {
+    const pid = AI_PID;
+    const oppId = pid === 'p1' ? 'p2' : 'p1';
+    const updates = {};
+
+    const inv = { ...(STATE.players[pid].inventory || {}) };
+    let wallsLeft = (STATE.players[pid].wallsLeft === undefined) ? 8 : STATE.players[pid].wallsLeft;
+    let powerups = (STATE.powerups || []).map(p => ({ ...p }));
+    let walls = (STATE.walls || []).map(w => ({ ...w }));
+    let aiTime = (STATE.timeRemaining && STATE.timeRemaining[pid] !== undefined) ? STATE.timeRemaining[pid] : 90;
+    let powerupsChanged = false;
+    let wallsChanged = false;
+    let freezeApplied = false;
+    let winner = null;
+
+    // 1) Sırayı bitirmeyen güçlendirmeler
+    for (const action of pre) {
+        if (action.powerupType === 'wall' && (inv.wall || 0) > 0) {
+            inv.wall = Math.max(0, (inv.wall || 0) - 1);
+            wallsLeft += 1;
+            showToast('🧱 Yapay zeka +1 duvar kazandı.', 'warning');
+        } else if (action.powerupType === 'freeze' && (inv.freeze || 0) > 0) {
+            inv.freeze = Math.max(0, (inv.freeze || 0) - 1);
+            updates['/boardState/frozenPlayer'] = oppId;
+            freezeApplied = true;
+            showToast('❄️ Yapay zeka seni dondurdu! Bu tur duvar koyamazsın.', 'error');
+        }
+    }
+
+    // 2) Asıl hamle
+    if (main.type === 'move') {
+        let { x, y } = main.to;
+
+        // Oyuncunun "Şaşırtma" etkisi aktifse yapay zekanın hamlesi de sapar.
+        if (STATE.activeEffects && STATE.activeEffects[pid] && STATE.activeEffects[pid].chaos) {
+            const options = aiValidMoves(snapshot, pid);
+            const others = options.filter(m => m.x !== x || m.y !== y);
+            const choices = others.length > 0 ? others : options;
+            if (choices.length > 0) {
+                const rand = choices[Math.floor(Math.random() * choices.length)];
+                x = rand.x; y = rand.y;
+                showToast('🔀 Şaşırtma işe yaradı! Yapay zeka yolunu şaşırdı.', 'success');
+            }
+            updates[`/boardState/activeEffects/${pid}/chaos`] = false;
+        }
+        if (STATE.activeEffects && STATE.activeEffects[pid] && STATE.activeEffects[pid].hourglass) {
+            updates[`/boardState/activeEffects/${pid}/hourglass`] = false;
+        }
+
+        updates[`/boardState/${pid}/x`] = x;
+        updates[`/boardState/${pid}/y`] = y;
+
+        // Güçlendirme topla
+        const pIndex = powerups.findIndex(p => p.x === x && p.y === y);
+        if (pIndex !== -1) {
+            const type = powerups[pIndex].type;
+            powerups.splice(pIndex, 1);
+            powerupsChanged = true;
+
+            if (type === 'star') {
+                ['destroy', 'ghost', 'freeze', 'wall', 'return', 'chaos', 'double_turn', 'hourglass']
+                    .forEach(t => { inv[t] = (inv[t] || 0) + 1; });
+                showToast('🌟 Yapay zeka efsanevi yıldızı aldı!', 'error');
+            } else if (type === 'time_bonus') {
+                aiTime += 10;
+                showToast('⏱️ Yapay zeka +10 saniye aldı.', 'warning');
+            } else {
+                inv[type] = (inv[type] || 0) + 1;
+                showToast('Yapay zeka bir güçlendirme aldı!', 'warning');
+            }
+            sounds.play('powerup_collect');
+        } else {
+            sounds.play('move');
+        }
+
+        if (y === 0) winner = pid; // p2 hedefi 0. satır
+    } else if (main.type === 'wall') {
+        walls.push({ x: main.x, y: main.y, type: main.orientation, owner: pid });
+        wallsChanged = true;
+        wallsLeft = Math.max(0, wallsLeft - 1);
+        sounds.play('wall_place');
+    } else if (main.type === 'destroy') {
+        walls = walls.filter(w => !(w.x === main.x && w.y === main.y && w.type === main.orientation));
+        wallsChanged = true;
+        inv.destroy = Math.max(0, (inv.destroy || 0) - 1);
+        showToast('💣 Yapay zeka bir duvarı yıktı!', 'warning');
+    } else if (main.type === 'activate') {
+        if (main.powerupType === 'return') {
+            inv.return = Math.max(0, (inv.return || 0) - 1);
+            updates[`/boardState/${oppId}/x`] = Math.floor(GRID_COLS / 2);
+            updates[`/boardState/${oppId}/y`] = oppId === 'p2' ? GRID_ROWS - 1 : 0;
+            showToast('↩️ Yapay zeka seni başlangıca geri gönderdi!', 'error');
+        } else if (main.powerupType === 'hourglass') {
+            inv.hourglass = Math.max(0, (inv.hourglass || 0) - 1);
+            const oppTime = Math.max(0, ((STATE.timeRemaining && STATE.timeRemaining[oppId]) || 90) - 10);
+            updates[`/boardState/timeRemaining/${oppId}`] = oppTime;
+            showToast('⏳ Yapay zeka süreni 10 saniye azalttı!', 'error');
+            if (oppTime <= 0) winner = pid;
+        } else if (main.powerupType === 'chaos') {
+            inv.chaos = Math.max(0, (inv.chaos || 0) - 1);
+            updates[`/boardState/activeEffects/${oppId}/chaos`] = true;
+            showToast('🔀 Yapay zeka şaşırtma kullandı! Sıradaki hamlen sapabilir.', 'error');
+        }
+    }
+
+    // 3) Tur sonu
+    updates[`/boardState/${pid}/inventory`] = inv;
+    updates[`/boardState/${pid}/wallsLeft`] = wallsLeft;
+    updates[`/boardState/timeRemaining/${pid}`] = aiTime;
+
+    // Kendi donmuşluğu bu turda kalkar; ama az önce rakibi dondurduysa onu ezme
+    if (STATE.frozenPlayer === pid && !freezeApplied) updates['/boardState/frozenPlayer'] = null;
+
+    if (winner) {
+        updates['/boardState/winner'] = winner;
+        updates['/status'] = 'finished';
+    } else {
+        updates['/turn'] = oppId;
+
+        // Güçlendirme doğuşu (çevrimiçi modla aynı olasılık)
+        if (powerups.length < 5 && Math.random() < 0.22) {
+            const newP = generatePowerup(powerups);
+            if (newP) { powerups.push(newP); powerupsChanged = true; }
+        }
+    }
+
+    if (powerupsChanged) updates['/boardState/powerups'] = powerups;
+    if (wallsChanged) updates['/boardState/walls'] = walls;
+
+    stopTurnTimer();
+    roomUpdate(updates);
+}
+
 // --- FIREBASE ACTIONS ---
+
+// Yeni bir oyunun başlangıç tahtası (oda kurma, rövanş ve tek kişilik mod ortak kullanır)
+function createInitialBoardState() {
+    return {
+        p1: { x: Math.floor(GRID_COLS / 2), y: 0, wallsLeft: 8, inventory: { destroy: 0, ghost: 0, freeze: 0, wall: 0 } },
+        p2: { x: Math.floor(GRID_COLS / 2), y: GRID_ROWS - 1, wallsLeft: 8, inventory: { destroy: 0, ghost: 0, freeze: 0, wall: 0 } },
+        walls: [],
+        powerups: [],
+        timeRemaining: { p1: 90, p2: 90 }
+    };
+}
 
 function resetRoom() {
     if (!STATE.roomId) return;
 
     // Reset to initial state
     const initialState = {
-        p1: { x: Math.floor(GRID_COLS / 2), y: 0, wallsLeft: 8, inventory: { destroy: 0, ghost: 0, freeze: 0, wall: 0 } },
-        p2: { x: Math.floor(GRID_COLS / 2), y: GRID_ROWS - 1, wallsLeft: 8, inventory: { destroy: 0, ghost: 0, freeze: 0, wall: 0 } },
-        walls: [],
-        powerups: [],
-        timeRemaining: { p1: 90, p2: 90 },
+        ...createInitialBoardState(),
         winner: null // Explicitly clear winner for rematch
     };
 
-    const roomRef = ref(db, 'rooms/' + STATE.roomId);
-    update(roomRef, {
+    if (STATE.vsAI) {
+        STATE.aiThinking = false;
+        if (STATE.aiTimer) { clearTimeout(STATE.aiTimer); STATE.aiTimer = null; }
+    }
+
+    roomUpdate({
         turn: Math.random() < 0.5 ? 'p1' : 'p2',
         status: 'active', // Ensure status is active
         boardState: initialState
@@ -973,6 +1231,7 @@ function resetRoom() {
 }
 
 function createRoom(customId = null) {
+    STATE.vsAI = false; // Çevrimiçi moda dönüş
     // Ensure customId is a string (and not an Event object from click listeners)
     const validCustomId = (typeof customId === 'string') ? customId : null;
     const roomId = validCustomId || Math.random().toString(36).substring(2, 6).toUpperCase();
@@ -983,13 +1242,7 @@ function createRoom(customId = null) {
         p1: username,
         turn: Math.random() < 0.5 ? 'p1' : 'p2',
         status: 'waiting',
-        boardState: {
-            p1: { x: Math.floor(GRID_COLS / 2), y: 0, wallsLeft: 8, inventory: { destroy: 0, ghost: 0, freeze: 0, wall: 0 } },
-            p2: { x: Math.floor(GRID_COLS / 2), y: GRID_ROWS - 1, wallsLeft: 8, inventory: { destroy: 0, ghost: 0, freeze: 0, wall: 0 } },
-            walls: [],
-            powerups: [],
-            timeRemaining: { p1: 90, p2: 90 }
-        }
+        boardState: createInitialBoardState()
     });
 
     STATE.roomId = roomId;
@@ -1007,6 +1260,7 @@ function createRoom(customId = null) {
 }
 
 function joinRoom(retryCount = 0) {
+    STATE.vsAI = false; // Çevrimiçi moda dönüş
     const roomId = document.getElementById('room-code-input').value.toUpperCase();
     const username = document.getElementById('username-input').value || 'P2';
 
@@ -1077,6 +1331,13 @@ function startTurnTimer(activePlayerId) {
                 clearInterval(turnTimerInterval);
                 sendMove({ type: 'surrender' }); // Auto-surrender on timeout
                 showToast("Süre doldu!", "error");
+            } else if (STATE.vsAI && activePlayerId === AI_PID && STATE.timeRemaining[activePlayerId] <= 0) {
+                // Tek kişilik modda yapay zekanın süresi biterse oyuncu kazanır
+                clearInterval(turnTimerInterval);
+                if (STATE.aiTimer) { clearTimeout(STATE.aiTimer); STATE.aiTimer = null; }
+                STATE.aiThinking = false;
+                roomUpdate({ '/boardState/winner': STATE.playerId, '/status': 'finished' });
+                showToast("Yapay zekanın süresi doldu!", "success");
             }
         } else {
             clearInterval(turnTimerInterval);
@@ -1105,7 +1366,10 @@ function startGame(data) {
 
     showScreen('game');
     document.getElementById('p1-name').textContent = (data.p1 || 'P1').split(' ')[0];
-    document.getElementById('p2-name').textContent = (data.p2 || 'P2').split(' ')[0];
+    // Yapay zeka adı zorluk bilgisini taşıdığı için kısaltılmaz
+    document.getElementById('p2-name').textContent = STATE.vsAI
+        ? (data.p2 || 'Bot')
+        : (data.p2 || 'P2').split(' ')[0];
     updateHeader();
 
     // Init / reset renderer
@@ -1129,8 +1393,7 @@ function listenGameLoop() {
         STATE.roomUnsubscribe = null;
     }
 
-    const roomRef = ref(db, 'rooms/' + STATE.roomId);
-    STATE.roomUnsubscribe = onValue(roomRef, (snapshot) => {
+    STATE.roomUnsubscribe = roomSubscribe((snapshot) => {
         const data = snapshot.val();
         if (!data) return;
 
@@ -1163,7 +1426,7 @@ function listenGameLoop() {
                 // Stop Timer on Game Over
                 stopTurnTimer();
 
-                if (!STATE.statsRecorded && auth.currentUser) {
+                if (!STATE.statsRecorded && auth.currentUser && !STATE.vsAI) {
                     STATE.statsRecorded = true;
                     const isWin = (data.boardState.winner === STATE.playerId);
                     const opponentName = (STATE.playerId === 'p1') ? (data.p2 || 'Rakip') : (data.p1 || 'Rakip');
@@ -1216,12 +1479,12 @@ function listenGameLoop() {
         if (STATE.gameActive) {
             updateTurnUI(data.turn);
             checkWin();
+            maybeRunAI(data);
         }
     });
 }
 
 function sendMove(moveData, endTurn = true) {
-    const roomRef = ref(db, 'rooms/' + STATE.roomId);
     const nextTurn = STATE.playerId === 'p1' ? 'p2' : 'p1';
 
     // Current State Copies
@@ -1374,7 +1637,7 @@ function sendMove(moveData, endTurn = true) {
         }
     }
 
-    update(roomRef, updates);
+    roomUpdate(updates);
 
     // Only yield turn if we didn't use double_turn
     if (endTurn && !usedDoubleTurn) {
