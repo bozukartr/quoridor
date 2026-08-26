@@ -1,300 +1,237 @@
-/* Tutorial Page Specific Styles */
-/* Only add styles that are NOT in style.css */
+/* howto.css — İnteraktif rehber ekranı.
+   Tahta, duvar düğmeleri ve envanter oyunun kendi stillerini kullanır
+   (style.css); burada yalnızca rehbere özgü parçalar var. */
 
-body.tutorial-mode {
-    background-color: #0f172a;
-    color: white;
-    height: 100vh;
+.hidden {
+    display: none !important;
+}
+
+#tutorial-screen {
+    justify-content: flex-start;
+    align-items: center;
+    gap: 8px;
+    height: 100dvh;
     overflow: hidden;
+    padding:
+        max(env(safe-area-inset-top, 0px), 8px)
+        env(safe-area-inset-right, 0px)
+        max(env(safe-area-inset-bottom, 0px), 6px)
+        env(safe-area-inset-left, 0px);
 }
 
-/* Custom Instruction Card - TOP MODAL */
-.instruction-card {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    background: linear-gradient(to bottom, #1e293b 0%, #0f172a 100%);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.15);
-    border-radius: 0 0 16px 16px;
-    padding: 20px 24px;
-    margin: 0;
-    text-align: center;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
-    z-index: 1000;
-    width: auto;
-
-    transform: translateY(-100%);
-    animation: slideDown 0.5s forwards ease-out;
-}
-
-@keyframes slideDown {
-    to {
-        transform: translateY(0);
-    }
-}
-
-#instruction-text {
-    font-size: 1.1rem;
-    margin: 30px 0 16px 0;
-    line-height: 1.6;
-    color: #f1f5f9;
-    font-weight: 500;
-}
-
-#progress-bar {
+/* ── Üst çubuk: geri, ilerleme noktaları, atla ─────────────── */
+.tutorial-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
     width: 100%;
-    height: 6px;
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 3px;
-    overflow: hidden;
-    margin-top: 8px;
+    max-width: 560px;
+    padding: 0 12px;
+    flex-shrink: 0;
 }
 
-#progress-fill {
-    width: 0%;
-    height: 100%;
-    background: #3b82f6;
-    transition: width 0.3s ease;
-}
-
-/* Powerup Controls Container Fix */
-.powerup-controls {
-    display: none;
-    /* Toggled by JS */
+.tutorial-progress {
+    display: flex;
+    align-items: center;
     justify-content: center;
-    gap: 16px;
-    padding: 20px;
-    width: 100%;
-    overflow: visible;
+    gap: 6px;
+    flex: 1;
 }
 
-/* Inventory Button Styles */
-.inventory-btn {
-    position: relative;
-    width: 50px;
-    height: 50px;
-    border-radius: 12px;
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    color: #cbd5e1;
-    font-size: 1.2rem;
+.progress-dot {
+    width: 9px;
+    height: 9px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: var(--bg-elevated);
+    box-shadow: inset 0 0 0 1px var(--border);
     cursor: pointer;
     transition: all 0.2s ease;
+}
+
+.progress-dot.passed {
+    background: rgba(91, 124, 255, 0.55);
+}
+
+.progress-dot.current {
+    width: 26px;
+    border-radius: 5px;
+    background: var(--primary);
+    box-shadow: 0 0 10px rgba(91, 124, 255, 0.5);
+}
+
+/* ── Ders kartı ────────────────────────────────────────────── */
+.lesson-card {
+    width: calc(100% - 16px);
+    max-width: 560px;
+    padding: 14px 16px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+    flex-shrink: 0;
+}
+
+.lesson-card h2 {
+    margin: 0 0 6px;
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.lesson-card p {
+    margin: 0;
+    font-size: 0.88rem;
+    line-height: 1.5;
+    color: var(--text-secondary);
+}
+
+/* Yapılacak görev satırı */
+.lesson-task {
     display: flex;
     align-items: center;
-    justify-content: center;
+    gap: 8px;
+    margin-top: 12px;
+    padding: 9px 12px;
+    border-radius: var(--radius-md);
+    background: rgba(91, 124, 255, 0.12);
+    border: 1px solid rgba(91, 124, 255, 0.35);
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    font-weight: 600;
 }
 
-.inventory-btn.hidden {
-    display: none;
+.lesson-task i {
+    color: var(--primary);
+    font-size: 1rem;
 }
 
-.inventory-btn.disabled {
-    opacity: 0.3;
-    pointer-events: none;
-    filter: grayscale(1);
-    border-style: dashed;
+.lesson-task.done {
+    background: rgba(34, 197, 94, 0.14);
+    border-color: rgba(34, 197, 94, 0.45);
 }
 
-.inventory-btn:hover {
-    background: rgba(255, 255, 255, 0.15);
-    transform: translateY(-2px);
-}
-
-.inventory-btn .badge {
-    position: absolute;
-    top: -6px;
-    right: -6px;
-    background: #ef4444;
-    color: white;
-    font-size: 0.7rem;
-    font-weight: bold;
-    padding: 2px 6px;
-    border-radius: 10px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-    z-index: 10;
-    /* Ensure badge survives grayscale removal nicely */
-    transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-}
-
-/* Powerup Colors (Applied when active OR available) */
-/* Force colors with !important to ensure no overrides */
-#btn-destroy.active i,
-#btn-destroy.available i {
-    color: #ef4444 !important;
-}
-
-#btn-ghost.active i,
-#btn-ghost.available i {
-    color: #a855f7 !important;
-}
-
-#btn-freeze.active i,
-#btn-freeze.available i {
-    color: #0ea5e9 !important;
-}
-
-#btn-wall_plus.active i,
-#btn-wall_plus.available i {
-    color: #f97316 !important;
-}
-
-#btn-return.active i,
-#btn-return.available i {
-    color: #10b981 !important;
-}
-
-#btn-chaos.active i,
-#btn-chaos.available i {
-    color: #d946ef !important;
-}
-
-#btn-double_turn.active i,
-#btn-double_turn.available i {
-    color: #eab308 !important;
-}
-
-#btn-hourglass.active i,
-#btn-hourglass.available i {
-    color: #f43f5e !important;
-}
-
-/* When available, badge pop */
-.inventory-btn.available .badge {
-    transform: scale(1.3);
-    box-shadow: 0 0 10px #ef4444;
-}
-
-.inventory-btn.active {
-    border-color: rgba(255, 255, 255, 0.5);
-    background: rgba(255, 255, 255, 0.1);
-}
-
-/* Collectible Items (Star) */
-.collectible {
-    position: absolute;
-    width: 60%;
-    height: 60%;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    z-index: 15;
-    pointer-events: none;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    font-size: 1.5rem;
-    animation: float-star 2s infinite ease-in-out;
-}
-
-.collectible.star {
-    color: #ffd700;
-    text-shadow: 0 0 10px rgba(255, 215, 0, 0.6);
-}
-
-@keyframes float-star {
-
-    0%,
-    100% {
-        transform: translate(-50%, -50%);
-    }
-
-    50% {
-        transform: translate(-50%, -60%);
-    }
-}
-
-
-/* Target Highlight */
-@keyframes pulse-target {
-    0% {
-        box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7);
-        border-color: #22c55e;
-    }
-
-    70% {
-        box-shadow: 0 0 0 15px rgba(34, 197, 94, 0);
-        border-color: #22c55e;
-    }
-
-    100% {
-        box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
-        border-color: #22c55e;
-    }
-}
-
-.target-cell {
-    animation: pulse-target 1.5s infinite;
-    z-index: 50;
-}
-
-.target-cell::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border: 3px solid #22c55e;
-    border-radius: 4px;
-    pointer-events: none;
-}
-
-/* Success Modal */
-.modal-overlay.hidden {
-    display: none;
-}
-
-.modal-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.8);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 2000;
-}
-
-.success-card {
-    background: #1e293b;
-    padding: 2rem;
-    border-radius: 16px;
-    text-align: center;
-    max-width: 90%;
-    width: 320px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.success-icon {
-    width: 64px;
-    height: 64px;
-    background: rgba(34, 197, 94, 0.2);
+.lesson-task.done i {
     color: #22c55e;
-    border-radius: 50%;
+}
+
+/* ── Güçlendirme rehberi (son bölüm) ───────────────────────── */
+.powerup-guide {
+    flex: 1 1 auto;
+    width: calc(100% - 16px);
+    max-width: 560px;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 2px;
+}
+
+.guide-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--pu-color, var(--border));
+    border-radius: var(--radius-md);
+}
+
+.guide-icon {
+    width: 34px;
+    height: 34px;
+    flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 2rem;
-    margin: 0 auto 1rem auto;
+    border-radius: 10px;
+    background: var(--bg-elevated);
+    color: var(--pu-color, var(--text-primary));
+    font-size: 1rem;
 }
 
-/* Pulse (General) */
-.pulse {
-    animation: btn-pulse 1.5s infinite;
-    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7);
+.guide-body {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
 }
 
-@keyframes btn-pulse {
-    0% {
-        transform: scale(0.95);
-        box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7);
+.guide-body strong {
+    font-size: 0.88rem;
+    color: var(--text-primary);
+}
+
+.guide-body small {
+    font-size: 0.78rem;
+    line-height: 1.35;
+    color: var(--text-secondary);
+}
+
+/* ── Alt aksiyon ───────────────────────────────────────────── */
+.tutorial-actions {
+    width: calc(100% - 16px);
+    max-width: 560px;
+    flex-shrink: 0;
+}
+
+.tutorial-actions .btn {
+    height: 50px;
+}
+
+.tutorial-actions .btn:disabled {
+    opacity: 0.45;
+    cursor: default;
+    box-shadow: none;
+}
+
+/* ── Yatay ekran: metin solda, tahta sağda ─────────────────── */
+@media (orientation: landscape) and (max-height: 520px) {
+    #tutorial-screen {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+        grid-template-rows: auto minmax(0, 1fr) auto;
+        grid-template-areas:
+            "top  top"
+            "info board"
+            "act  ctrl";
+        align-items: stretch;
+        gap: 6px;
+        padding:
+            max(4px, env(safe-area-inset-top, 0px))
+            max(6px, env(safe-area-inset-right, 0px))
+            max(4px, env(safe-area-inset-bottom, 0px))
+            max(6px, env(safe-area-inset-left, 0px));
     }
 
-    70% {
-        transform: scale(1);
-        box-shadow: 0 0 0 10px rgba(59, 130, 246, 0);
-    }
+    .tutorial-top { grid-area: top; max-width: none; padding: 0; }
+    .lesson-card { grid-area: info; width: 100%; max-width: none; overflow-y: auto; padding: 10px 12px; }
+    .lesson-card h2 { font-size: 0.95rem; }
+    .lesson-card p { font-size: 0.78rem; line-height: 1.35; }
+    .lesson-task { margin-top: 8px; padding: 6px 9px; font-size: 0.76rem; }
+    .powerup-guide { grid-area: board; width: 100%; max-width: none; }
+    .board-container { grid-area: board; width: 100%; max-width: none; height: 100%; align-self: stretch; }
+    .controls { grid-area: ctrl; width: 100%; max-width: none; align-self: end; }
+    .powerup-controls { grid-area: ctrl; align-self: end; }
+    .tutorial-actions { grid-area: act; width: 100%; max-width: none; align-self: end; }
+    .tutorial-actions .btn { height: 42px; font-size: 0.85rem; }
+}
 
-    100% {
-        transform: scale(0.95);
-        box-shadow: 0 0 0 0 rgba(59, 130, 246, 0);
-    }
+/* ── Dar / kısa ekranlar ───────────────────────────────────── */
+@media (max-height: 740px) {
+    .lesson-card { padding: 10px 12px; }
+    .lesson-card h2 { font-size: 1rem; }
+    .lesson-card p { font-size: 0.82rem; line-height: 1.4; }
+    .lesson-task { margin-top: 8px; padding: 7px 10px; font-size: 0.8rem; }
+    .tutorial-actions .btn { height: 44px; }
+    #tutorial-screen { gap: 6px; }
+}
+
+@media (max-width: 360px) {
+    .lesson-card p { font-size: 0.8rem; }
+    .guide-body small { font-size: 0.74rem; }
 }
