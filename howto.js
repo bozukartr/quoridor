@@ -1,620 +1,560 @@
+// howto.js — İnteraktif oyun rehberi.
+//
+// Rehber, oyunun kendi parçalarını kullanır: tahta aynı GameRenderer ile çizilir,
+// kurallar ai.js'ten, güçlendirme ikonları powerups.js'ten gelir. Böylece oyunda
+// bir şey değiştiğinde rehber eskimez ve öğrettiği hareketler birebir tutar.
 
-const GRID_ROWS = 9;
-const GRID_COLS = 7;
+import { GameRenderer } from "./game-renderer.js";
+import { getValidMoves, wallInvalidReason } from "./ai.js";
+import { POWERUP_INFO, INVENTORY_TYPES, powerupIconClass, powerupCssColor, powerupRgba } from "./powerups.js";
 
-// --- STATE MIRROR ---
-let STATE = {
-    playerId: 'p1', // User is always P1 (Blue)
-    isMyTurn: true, // Always true for tutorial mostly
-    mode: 'move',
-    wallOrientation: 'horizontal',
-    walls: [],
-    players: {
-        p1: { x: 3, y: 8, wallsLeft: 10 },
-        p2: { x: 3, y: 0, wallsLeft: 10 }
-    },
-    pendingAction: null,
-    lesson: null,
-    step: 0,
-    activeEffects: { p1: {}, p2: {} },
-    ghostMode: false,
-    doubleTurnRemaining: 0,
-    collectibles: [] // { x, y, type: 'star' }
+const COLS = 7;
+const ROWS = 9;
+
+// Oyundaki sürükleme hissiyle birebir aynı olsun diye aynı sabitler
+const DRAG_LIFT_CELLS = { vertical: 1.6, horizontal: 0.7, destroy: 1.0 };
+const DRAG_MOVE_THRESHOLD = 6;
+
+const WALL_ERRORS = {
+    'overlap': 'Burada zaten duvar var!',
+    'blocks-path': 'Yolu tamamen kapatamazsın!',
+    'blocks-powerup': 'Özelliklerin önü tamamen kapatılamaz!',
+    'out-of-board': 'Duvar tahtanın dışına konamaz!'
 };
 
-// --- DOM ELEMENTS ---
-const gridBoard = document.getElementById('grid-board');
-const instructionText = document.getElementById('instruction-text');
-const lessonTitle = document.getElementById('lesson-title');
-const progressBar = document.getElementById('progress-bar');
-const progressFill = document.getElementById('progress-fill');
-const successModal = document.getElementById('success-modal');
+// --- Dersler ---------------------------------------------------------------
+// setup: tahtanın başlangıç hâli. ui: hangi kontroller görünsün.
+// goal: { text, total, accept(olay, bağlam) } — accept true dönerse ilerleme artar.
 
-// --- LESSON DATA ---
-const LESSONS = {
-    movement: {
-        title: "Hareket Etme",
-        steps: [
-            {
-                text: "Piyonunu (Mavi) bir kare ileri, geri, sağa veya sola hareket ettirebilirsin. Hadi, piyonunu bir kare ileri (yukarı) taşı.",
-                goal: 'move',
-                target: { x: 3, y: 7 },
-                setup: { p1: { x: 3, y: 8 }, p2: { x: 3, y: 0 } }
-            }
-        ]
+const LESSONS = [
+    {
+        id: 'amac',
+        topics: ['goal'],
+        title: 'Oyunun Amacı',
+        text: 'Sen mavi taşsın. Amacın taşını karşı kenara — en üst sıraya — ulaştırmak; rakip (pembe) ise tam tersini yapmaya çalışıyor. Bu örnekte hedefe iki kare kaldı.',
+        setup: { p1: { x: 3, y: 6 }, p2: { x: 3, y: 0 } },
+        ui: {},
+        goal: {
+            text: 'Taşını en üst sıraya ulaştır',
+            total: 1,
+            accept: (ev, ctx) => ev.type === 'move' && ctx.state.players.p1.y === ROWS - 1
+        },
+        done: 'İşte bu! Karşı kenara ulaşan ilk oyuncu kazanır.'
     },
-    wall: {
-        title: "Duvar Örme",
-        steps: [
-            {
-                text: "Duvar moduna geçmek için aşağıdaki Duvar butonuna tıkla.",
-                goal: 'mode_switch',
-                mode: 'wall',
-                setup: { p1: { x: 3, y: 8 }, p2: { x: 3, y: 0 } }
-            },
-            {
-                text: "Şimdi haritada herhangi bir yere yatay bir duvar yerleştir. (Duvarlar iki kare uzunluğundadır).",
-                goal: 'place_wall',
-                orientation: 'horizontal'
-            },
-            {
-                text: "Harika! Duvar yönünü değiştirmek için döndürme butonuna bas.",
-                goal: 'rotate_wall'
-            },
-            {
-                text: "Şimdi dikey bir duvar yerleştir.",
-                goal: 'place_wall',
-                orientation: 'vertical'
-            }
-        ]
+    {
+        id: 'hareket',
+        topics: ['movement'],
+        title: 'Hareket',
+        text: 'Sıra sendeyken taşını bir kare ileri, geri, sağa ya da sola oynatabilirsin. Çapraz gidemezsin. Gidebileceğin kareler tahtada işaretli görünür.',
+        setup: { p1: { x: 3, y: 2 }, p2: { x: 3, y: 8 } },
+        ui: {},
+        goal: {
+            text: 'İki hamle yap',
+            total: 2,
+            accept: (ev) => ev.type === 'move'
+        },
+        done: 'Hareket tamam. Şimdi rakibin üzerinden atlamayı görelim.'
     },
-    destroy: {
-        title: "Duvar Kırıcı",
-        steps: [
-            {
-                text: "Rakibin önünü kapattı! Neyse ki 'Duvar Kırıcı' gücün var. Aşağıdaki Bomba ikonuna tıkla.",
-                goal: 'powerup_activate',
-                powerup: 'destroy',
-                setup: {
-                    p1: { x: 3, y: 8 },
-                    p2: { x: 3, y: 0 },
-                    walls: [{ x: 3, y: 7, type: 'horizontal' }]
-                }
-            },
-            {
-                text: "Şimdi kırmak istediğin duvarın üzerine tıkla. (Duvarın merkezine)",
-                goal: 'destroy_wall',
-                mode: 'destroy'
-            }
-        ]
+    {
+        id: 'ziplama',
+        topics: ['jump'],
+        title: 'Rakibin Üzerinden Atlama',
+        text: 'Rakip tam önünde duruyorsa onun üzerinden atlarsın: arkasındaki kareye geçersin. Arkası duvarla kapalıysa yandan dolanırsın.',
+        setup: { p1: { x: 3, y: 3 }, p2: { x: 3, y: 4 } },
+        ui: {},
+        goal: {
+            text: 'Rakibin üzerinden atla',
+            total: 1,
+            accept: (ev, ctx) => ev.type === 'move' && ctx.state.players.p1.y >= 5
+        },
+        done: 'Atladın! Rakip artık arkanda kaldı.'
     },
-    ghost: {
-        title: "Hayalet Modu",
-        steps: [
-            {
-                text: "Duvarlar seni durduramaz! Hayalet Modu ile duvarların içinden geçebilirsin. Aşağıdaki Hayalet ikonuna tıkla.",
-                goal: 'powerup_activate',
-                powerup: 'ghost',
-                setup: {
-                    p1: { x: 3, y: 8 },
-                    p2: { x: 3, y: 0 },
-                    walls: [{ x: 3, y: 7, type: 'horizontal' }]
-                }
-            },
-            {
-                text: "Şimdi duvarın arkasındaki kareye tıkla ve içinden geç!",
-                goal: 'move',
-                target: { x: 3, y: 7 },
-                ghostMode: true
+    {
+        id: 'duvar',
+        topics: ['wall'],
+        title: 'Duvar Koyma',
+        text: 'Duvarlar rakibi yavaşlatır. Alttaki "Dikey" veya "Yatay" düğmesine bas ve parmağını kaldırmadan tahtaya sürükle. Duvar, parmağının biraz yukarısında hayalet olarak görünür ve en yakın yuvaya oturur. Parmağını kaldırdığın an konur — onay yok.',
+        setup: { p1: { x: 3, y: 2 }, p2: { x: 3, y: 6 }, walls: 8 },
+        ui: { walls: true },
+        goal: {
+            text: 'Bir dikey ve bir yatay duvar koy',
+            total: 2,
+            accept: (ev, ctx) => {
+                if (ev.type !== 'wall' || ctx.seen.has(ev.orientation)) return false;
+                ctx.seen.add(ev.orientation);
+                return true;
             }
-        ]
+        },
+        done: 'Duvar koymayı öğrendin. Her oyuncunun 8 duvarı vardır.'
     },
-    freeze: {
-        title: "Dondurucu",
-        steps: [
-            {
-                text: "Rakibin çok agresif oynuyor! Dondurucu ile onun sonraki tur duvar örmesini engelleyebilirsin. Butona tıkla.",
-                goal: 'powerup_activate',
-                powerup: 'freeze',
-                setup: { p1: { x: 3, y: 8 }, p2: { x: 3, y: 0 } }
-            }
-        ]
+    {
+        id: 'duvar-kurali',
+        topics: ['wall-rule'],
+        title: 'Yolu Tamamen Kapatamazsın',
+        text: 'Duvarla rakibi yavaşlatabilirsin ama yolunu tamamen kapatamazsın. Rakip köşeye sıkışmış: tek bir yatay duvar onu tamamen kapatır. Sürüklerken hayalet yeşilse konabilir, kırmızıysa konamaz — kırmızıyken bıraksan bile duvar hakkın ve sıran yanmaz.',
+        // Rakip köşede: tek bir yatay duvar onu tamamen kapatır, oyun buna izin vermez.
+        setup: {
+            p1: { x: 3, y: 2 }, p2: { x: 0, y: 8 }, walls: 8,
+            board: [{ x: 0, y: 7, type: 'vertical' }]
+        },
+        ui: { walls: true },
+        goal: {
+            text: 'Kırmızı hayaleti gör: rakibi tamamen kapatmayı dene',
+            total: 1,
+            accept: (ev) => ev.type === 'invalid-wall'
+        },
+        done: 'Gördün mü? Oyun bu hamleye izin vermiyor; rakibin her zaman bir yolu kalmalı.'
     },
-    wall_plus: {
-        title: "+1 Duvar",
-        steps: [
-            {
-                text: "Duvar hakkın azaldığında +1 Duvar paketi hayat kurtarır. Butona tıkla ve duvar sayını artır.",
-                goal: 'powerup_activate',
-                powerup: 'wall_plus',
-                setup: { p1: { x: 3, y: 8, wallsLeft: 2 }, p2: { x: 3, y: 0 } }
-            }
-        ]
+    {
+        id: 'duvar-kirici',
+        topics: ['destroy'],
+        title: 'Duvar Kırıcı',
+        text: 'Önünü kapatan bir duvar mı var? Duvar Kırıcı güçlendirmesini de aynı şekilde sürüklersin: bombayı duvarın üstüne getir, ✖ işareti hangi duvardaysa o kırılır.',
+        setup: {
+            p1: { x: 3, y: 3 }, p2: { x: 3, y: 8 }, walls: 8,
+            board: [{ x: 2, y: 3, type: 'horizontal' }],
+            inventory: { destroy: 1 }
+        },
+        ui: { walls: true, powerups: ['destroy'] },
+        goal: {
+            text: 'Önündeki duvarı kır',
+            total: 1,
+            accept: (ev) => ev.type === 'destroy'
+        },
+        done: 'Duvar gitti, yolun açıldı.'
     },
-    return: {
-        title: "Geri Sar",
-        steps: [
-            {
-                text: "Rakip çok yaklaştı! Geri Sar gücüyle onu başlangıç noktasına gönderebilirsin. Butona tıkla.",
-                goal: 'powerup_activate',
-                powerup: 'return',
-                setup: { p1: { x: 3, y: 8 }, p2: { x: 3, y: 2 } }
+    {
+        id: 'guclendirme',
+        topics: ['powerup', 'freeze'],
+        title: 'Güçlendirme Toplama',
+        text: 'Tahtada beliren güçlendirmelerin üzerine gelirsen onları toplarsın. Toplananlar alttaki envanterine düşer; kullanmak için envanterdeki simgeye dokunman yeterli.',
+        setup: {
+            p1: { x: 3, y: 3 }, p2: { x: 3, y: 8 },
+            powerups: [{ x: 3, y: 4, type: 'freeze' }]
+        },
+        ui: { powerups: [] },
+        goal: {
+            text: 'Dondurucuyu topla ve kullan',
+            total: 2,
+            accept: (ev, ctx) => {
+                if (ev.type === 'collect' && !ctx.seen.has('collect')) { ctx.seen.add('collect'); return true; }
+                if (ev.type === 'use' && ctx.seen.has('collect') && !ctx.seen.has('use')) { ctx.seen.add('use'); return true; }
+                return false;
             }
-        ]
+        },
+        done: 'Dondurulan oyuncu bir tur duvar koyamaz — ama hareket edebilir.'
     },
-    chaos: {
-        title: "Kaos",
-        steps: [
-            {
-                text: "Kaos gücü rakibin kafasını karıştırır ve rastgele bir yere oynamasını sağlar. Butona tıkla.",
-                goal: 'powerup_activate',
-                powerup: 'chaos',
-                setup: { p1: { x: 3, y: 8 }, p2: { x: 3, y: 0 } }
-            }
-        ]
-    },
-    double_turn: {
-        title: "Çift Hamle",
-        steps: [
-            {
-                text: "Hızlı ilerlemek için Çift Hamle gücünü kullan. Butona tıkla.",
-                goal: 'powerup_activate',
-                powerup: 'double_turn',
-                setup: { p1: { x: 3, y: 8 }, p2: { x: 3, y: 0 } }
-            },
-            {
-                text: "Şimdi art arda iki hamle yap. İlk hamleni yap.",
-                goal: 'move',
-                target: { x: 3, y: 7 },
-                setup: { doubleTurnRemaining: 2 }
-            },
-            {
-                text: "Harika! Şimdi ikinci hamleni yap.",
-                goal: 'move',
-                target: { x: 3, y: 6 }
-            }
-        ]
-    },
-    hourglass: {
-        title: "Kum Saati",
-        steps: [
-            {
-                text: "Rakibin zamanı azalıyor! Ona daha az süre bırakmak için Kum Saati'ni kullan. Butona tıkla.",
-                goal: 'powerup_activate',
-                powerup: 'hourglass',
-                setup: {
-                    p1: { x: 3, y: 8 },
-                    p2: { x: 3, y: 0 },
-                    timerVisible: true
-                }
-            }
-        ]
-    },
-    star: {
-        title: "Yıldız Toplama",
-        steps: [
-            {
-                text: "Poweruplar şu an kilitli! Haritadaki Yıldızı alarak envanterini açabilirsin. Yıldıza doğru hareket et.",
-                goal: 'collect_star',
-                target: { x: 3, y: 7 }, // Star pos matches target move roughly
-                setup: {
-                    p1: { x: 3, y: 8 },
-                    p2: { x: 3, y: 0 },
-                    collectibles: [{ x: 3, y: 7, type: 'star' }],
-                    inventoryDisabled: true
-                }
-            },
-            {
-                text: "Harika! Yıldızı aldın ve envanterin açıldı.",
-                goal: 'wait', // Auto finish
-            }
-        ]
+    {
+        id: 'ozet',
+        topics: ['summary', 'chaos', 'double_turn', 'hourglass', 'return', 'ghost', 'wall_plus', 'time_bonus', 'star'],
+        title: 'Tüm Güçlendirmeler',
+        text: 'Oyun sırasında tahtada beliren güçlendirmeler bunlar. Süre de önemli: her oyuncunun toplam 90 saniyesi vardır, süresi biten kaybeder.',
+        setup: { p1: { x: 3, y: 0 }, p2: { x: 3, y: 8 }, hideBoard: true },
+        ui: { guide: true },
+        goal: { text: 'Hazırsan oyuna başla', total: 0 },
+        done: ''
     }
+];
+
+const POWERUP_DESC = {
+    destroy: 'Seçtiğin bir duvarı yok eder.',
+    ghost: 'Bir sonraki hamlende duvarların içinden geçersin.',
+    freeze: 'Rakip bir tur duvar koyamaz.',
+    wall: 'Duvar hakkını bir artırır.',
+    return: 'Rakibi başlangıç noktasına geri gönderir.',
+    chaos: 'Rakibin sonraki hamlesi rastgele bir yöne sapar.',
+    double_turn: 'Sıra tekrar sende: arka arkaya iki hamle.',
+    hourglass: 'Rakibin süresinden 10 saniye siler.',
+    time_bonus: 'Alan oyuncuya 10 saniye ekler.',
+    star: 'Çok nadir: diğer güçlendirmelerden birer adet verir.'
 };
 
-// --- INIT ---
-function init() {
-    const params = new URLSearchParams(window.location.search);
-    const topic = params.get('topic') || 'movement';
+// --- Durum -----------------------------------------------------------------
 
-    // Controls
-    document.getElementById('move-mode-btn').addEventListener('click', () => setMode('move'));
-    document.getElementById('wall-mode-btn').addEventListener('click', () => setMode('wall'));
-    document.getElementById('wall-rotate-btn').addEventListener('click', toggleOrientation);
-    document.getElementById('back-btn').addEventListener('click', () => window.history.back());
-    document.getElementById('finish-btn').addEventListener('click', () => window.location.href = 'index.html');
+let renderer = null;
+let lessonIndex = 0;
+let state = null;
+let ctx = null;          // { state, seen:Set }
+let progress = 0;
+let completed = false;
+let drag = null;
 
-    // Powerups
-    const powerups = ['destroy', 'ghost', 'freeze', 'wall_plus', 'return', 'chaos', 'double_turn', 'hourglass'];
-    powerups.forEach(p => {
-        const btn = document.getElementById(`btn-${p}`);
-        if (btn) btn.addEventListener('click', () => activatePowerup(p));
-    });
+const el = {
+    title: document.getElementById('lesson-title'),
+    text: document.getElementById('lesson-text'),
+    taskText: document.getElementById('task-text'),
+    taskIcon: document.getElementById('task-icon'),
+    task: document.getElementById('lesson-task'),
+    dots: document.getElementById('progress-dots'),
+    nextBtn: document.getElementById('next-btn'),
+    nextLabel: document.getElementById('next-label'),
+    wallControls: document.getElementById('wall-controls'),
+    wallCountValue: document.getElementById('wall-count-value'),
+    powerupControls: document.getElementById('powerup-controls'),
+    guide: document.getElementById('powerup-guide'),
+    boardWrap: document.getElementById('board-wrap'),
+    wallV: document.getElementById('wall-drag-vertical'),
+    wallH: document.getElementById('wall-drag-horizontal')
+};
 
-    // SYNC INITIAL UI
-    const orientationSpan = document.getElementById('wall-orientation');
-    if (orientationSpan) {
-        orientationSpan.textContent = STATE.wallOrientation === 'vertical' ? 'Dikey' : 'Yatay';
-    }
+// --- Yardımcılar -----------------------------------------------------------
 
-    generateGrid();
-    loadLesson(topic);
-
-    window.addEventListener('resize', () => {
-        renderBoard();
-    });
+function showToast(msg, type = 'info') {
+    const container = document.getElementById('toast-container');
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.innerHTML = `<span>${msg}</span> <i class="fa-solid fa-${type === 'error' ? 'circle-exclamation' : 'circle-check'}"></i>`;
+    container.appendChild(toast);
+    setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 2600);
 }
 
-function loadLesson(key) {
-    const lessonData = LESSONS[key] || LESSONS['movement'];
-    STATE.lesson = lessonData;
-    STATE.step = 0;
-    lessonTitle.textContent = lessonData.title;
-
-    // Apply Setup
-    const step0 = lessonData.steps[0];
-    if (step0.setup) {
-        STATE.players.p1 = { ...STATE.players.p1, ...step0.setup.p1 };
-        STATE.players.p2 = { ...STATE.players.p2, ...step0.setup.p2 };
-        if (step0.setup.walls) {
-            STATE.walls = step0.setup.walls.map(w => ({ ...w }));
-        } else {
-            STATE.walls = [];
-        }
-        STATE.collectibles = step0.setup.collectibles || [];
-
-        // Timer Logic Setup
-        if (step0.setup.timerVisible) {
-            document.getElementById('opponent-timer-display').style.display = 'block';
-            document.getElementById('opponent-timer-display').textContent = '⏳ 15s';
-        } else {
-            document.getElementById('opponent-timer-display').style.display = 'none';
-        }
-
-    } else {
-        STATE.walls = [];
-        STATE.collectibles = [];
-    }
-
-    STATE.pendingAction = null;
-    STATE.ghostMode = false;
-    STATE.doubleTurnRemaining = 0;
-    setMode('move');
-
-    // Show Powerups logic
-    const allBtns = document.querySelectorAll('.inventory-btn');
-    document.getElementById('tutorial-powerups').style.display = 'none';
-    allBtns.forEach(b => {
-        b.classList.add('hidden');
-        b.classList.remove('disabled'); // Reset disabled state
-        b.classList.remove('available'); // Reset available state
-    });
-
-    // Special case for STAR: SHOW ALL, BUT DISABLE
-    if (key === 'star') {
-        document.getElementById('tutorial-powerups').style.display = 'flex';
-        allBtns.forEach(b => {
-            b.classList.remove('hidden');
-            if (step0.setup.inventoryDisabled) b.classList.add('disabled');
-        });
-    } else {
-        // Normal case: Show only relevant
-        const btnId = `btn-${key}`;
-        const btn = document.getElementById(btnId);
-        if (btn) {
-            document.getElementById('tutorial-powerups').style.display = 'flex';
-            btn.classList.remove('hidden');
-        }
-    }
-
-    updateWallCounts();
-    renderStep();
-    renderBoard();
+function buzz(pattern) {
+    if (navigator.vibrate) navigator.vibrate(pattern);
 }
 
-function updateWallCounts() {
-    document.getElementById('p1-walls').textContent = STATE.players.p1.wallsLeft;
-    document.getElementById('p2-walls').textContent = STATE.players.p2.wallsLeft;
+function boardState() {
+    return { cols: COLS, rows: ROWS, walls: state.walls, powerups: state.powerups, players: state.players };
 }
 
-function renderStep() {
-    const stepData = STATE.lesson.steps[STATE.step];
-    instructionText.textContent = stepData.text;
-    const pct = ((STATE.step) / STATE.lesson.steps.length) * 100;
-    progressFill.style.width = `${pct}%`;
-
-    // Reset highlights
-    document.querySelectorAll('.action-btn, .inventory-btn').forEach(b => {
-        b.classList.remove('pulse', 'active');
-        if (b.classList.contains('action-btn') && b.id.includes(STATE.mode)) b.classList.add('active');
-    });
-
-    if (stepData.goal === 'wait') {
-        setTimeout(nextStep, 1500);
-        return;
-    }
-
-    if (stepData.goal === 'powerup_activate') {
-        const btn = document.getElementById(`btn-${stepData.powerup}`);
-        if (btn) btn.classList.add('active'); // Color override via CSS
-    }
+function render() {
+    if (!renderer) return;
+    const moves = getValidMoves(boardState(), 'p1');
+    renderer.update(state, null, moves);
 }
 
-function activatePowerup(type) {
-    const currentStep = STATE.lesson.steps[STATE.step];
-    if (currentStep.goal === 'powerup_activate' && currentStep.powerup === type) {
+// --- Ders yükleme ----------------------------------------------------------
 
-        if (type === 'hourglass') {
-            const timerEl = document.getElementById('opponent-timer-display');
-            timerEl.style.color = '#ef4444';
-            timerEl.style.transform = 'scale(1.2)';
-            timerEl.textContent = '⏳ 5s'; // -10s visual
-            setTimeout(() => timerEl.style.transform = 'scale(1)', 300);
-            nextStep(); return;
+function loadLesson(index) {
+    lessonIndex = Math.max(0, Math.min(LESSONS.length - 1, index));
+    const lesson = LESSONS[lessonIndex];
+    const s = lesson.setup;
+
+    state = {
+        walls: (s.board || []).map(w => ({ ...w })),
+        powerups: (s.powerups || []).map(p => ({ ...p })),
+        players: {
+            p1: { ...s.p1, wallsLeft: s.walls || 0, inventory: { ...(s.inventory || {}) } },
+            p2: { ...s.p2, wallsLeft: s.walls || 0, inventory: {} }
         }
-
-        // ... Previous powerup logic ...
-        if (type === 'destroy') setMode('destroy');
-        else if (type === 'ghost') { STATE.ghostMode = true; setMode('move'); }
-        else if (type === 'wall_plus') { STATE.players.p1.wallsLeft++; updateWallCounts(); nextStep(); return; }
-        else if (type === 'freeze') { instructionText.textContent = "Rakip donduruldu!"; setTimeout(nextStep, 1000); return; }
-        else if (type === 'return') { STATE.players.p2.y = 0; renderBoard(); setTimeout(nextStep, 1000); return; }
-        else if (type === 'chaos') { instructionText.textContent = "Kaos aktif!"; setTimeout(nextStep, 1000); return; }
-        else if (type === 'double_turn') { instructionText.textContent = "Çift Hamle Aktif!"; STATE.doubleTurnRemaining = 2; nextStep(); return; }
-
-        nextStep();
-    }
-}
-
-function nextStep() {
-    STATE.step++;
-    if (STATE.step >= STATE.lesson.steps.length) {
-        progressFill.style.width = '100%';
-        instructionText.textContent = "Ders Tamamlandı!";
-        setTimeout(() => successModal.classList.remove('hidden'), 500);
-    } else {
-        renderStep();
-        renderBoard();
-    }
-}
-
-// --- CORE ENGINE ---
-function generateGrid() {
-    gridBoard.innerHTML = '';
-    // Use CSS Variable for size
-    gridBoard.style.gridTemplateColumns = `repeat(${GRID_COLS}, var(--cell-size))`;
-    gridBoard.style.gridTemplateRows = `repeat(${GRID_ROWS}, var(--cell-size))`;
-
-    for (let y = 0; y < GRID_ROWS; y++) {
-        for (let x = 0; x < GRID_COLS; x++) {
-            const cell = document.createElement('div');
-            cell.className = 'cell';
-            cell.dataset.x = x;
-            cell.dataset.y = y;
-            cell.addEventListener('click', (e) => handleCellClick(x, y, e));
-            cell.addEventListener('mousemove', (e) => handleCellHover(x, y, e));
-            cell.addEventListener('mouseleave', () => clearPreviews());
-            gridBoard.appendChild(cell);
-        }
-    }
-}
-
-function renderBoard() {
-    // 1. Clear moving elements
-    gridBoard.querySelectorAll('.player, .wall, .collectible').forEach(e => e.remove());
-    document.querySelectorAll('.cell').forEach(c => {
-        c.classList.remove('valid-move');
-        c.classList.remove('target-cell');
-    });
-
-    const cellEl = gridBoard.querySelector('.cell');
-    if (!cellEl) return;
-    const cellSize = cellEl.offsetWidth;
-    let gap = 3;
-    const cStyle = getComputedStyle(gridBoard);
-    if (cStyle.gap && cStyle.gap !== 'normal') gap = parseFloat(cStyle.gap);
-
-    // Render Collectibles (Star)
-    STATE.collectibles.forEach(col => {
-        const cell = document.querySelector(`.cell[data-x="${col.x}"][data-y="${col.y}"]`);
-        if (cell) {
-            const marker = document.createElement('div');
-            marker.className = `collectible ${col.type}`;
-            if (col.type === 'star') marker.innerHTML = '<i class="fa-solid fa-star"></i>';
-            cell.appendChild(marker);
-        }
-    });
-
-    // Helper
-    const placeVisualWall = (x, y, type, classes = []) => {
-        const w = document.createElement('div');
-        w.className = `wall ${type} ${classes.join(' ')}`;
-        let top, left;
-        if (type === 'vertical') {
-            left = (x + 1) * (cellSize + gap) - gap / 2;
-            top = y * (cellSize + gap);
-        } else {
-            top = (y + 1) * (cellSize + gap) - gap / 2;
-            left = x * (cellSize + gap);
-        }
-        w.style.left = `${left}px`;
-        w.style.top = `${top}px`;
-        gridBoard.appendChild(w);
     };
+    ctx = { state, seen: new Set() };
+    progress = 0;
+    completed = lesson.goal.total === 0;
+    cancelDrag();
 
-    STATE.walls.forEach(w => placeVisualWall(w.x, w.y, w.type, ['placed']));
+    el.title.textContent = lesson.title;
+    el.text.textContent = lesson.text;
+    el.boardWrap.classList.toggle('hidden', !!s.hideBoard);
+    el.wallControls.classList.toggle('hidden', !lesson.ui.walls);
+    el.guide.classList.toggle('hidden', !lesson.ui.guide);
+    if (lesson.ui.guide) renderGuide();
 
-    if (STATE.pendingAction && STATE.pendingAction.type === 'wall') {
-        const pa = STATE.pendingAction;
-        placeVisualWall(pa.x, pa.y, pa.orientation, ['pending']);
-    }
-
-    renderPlayer('p1');
-    renderPlayer('p2');
-
-    const currentStep = STATE.lesson.steps[STATE.step];
-    if (currentStep && currentStep.target && STATE.mode === 'move') {
-        const tCell = document.querySelector(`.cell[data-x="${currentStep.target.x}"][data-y="${currentStep.target.y}"]`);
-        if (tCell) tCell.classList.add('target-cell');
-    }
+    renderPowerupBar(lesson);
+    updateWallCount();
+    updateTask();
+    renderDots();
+    if (!s.hideBoard) render();
 }
 
-function renderPlayer(pid) {
-    const p = STATE.players[pid];
-    const cell = document.querySelector(`.cell[data-x="${p.x}"][data-y="${p.y}"]`);
-    if (cell) {
-        const el = document.createElement('div');
-        el.className = `player ${pid === 'p1' ? 'blue' : 'red'}`;
-        if (pid === 'p1' && STATE.ghostMode) {
-            el.style.opacity = '0.7';
-            el.style.boxShadow = '0 0 10px white';
-        } else {
-            el.style.opacity = '1';
-            el.style.boxShadow = '';
-        }
-        cell.appendChild(el);
-    }
-}
+function updateTask() {
+    const lesson = LESSONS[lessonIndex];
+    const total = lesson.goal.total;
 
-function handleCellClick(x, y, e) {
-    const currentStep = STATE.lesson.steps[STATE.step];
-
-    if (STATE.mode === 'move') {
-        if (currentStep.goal === 'move' || currentStep.goal === 'collect_star') {
-            const validMoves = getValidMoves(STATE.players.p1.x, STATE.players.p1.y);
-            const isValid = validMoves.some(m => m.x === x && m.y === y);
-
-            if (isValid) {
-                if (currentStep.target && (x !== currentStep.target.x || y !== currentStep.target.y)) return;
-
-                STATE.players.p1.x = x;
-                STATE.players.p1.y = y;
-
-                if (STATE.doubleTurnRemaining > 0) STATE.doubleTurnRemaining--;
-
-                // Collectible Logic
-                const colIndex = STATE.collectibles.findIndex(c => c.x === x && c.y === y && c.type === 'star');
-                if (colIndex !== -1) {
-                    STATE.collectibles.splice(colIndex, 1);
-                    // Unlock inventory visually
-                    document.querySelectorAll('.inventory-btn').forEach(b => {
-                        b.classList.remove('disabled');
-                        b.classList.add('available'); // Trigger color + badge active style
-                    });
-                    // Auto complete will happen via nextStep render
-                }
-
-                renderBoard();
-                nextStep();
-            }
-        }
-        return;
+    if (total === 0) {
+        el.task.classList.add('hidden');
+    } else {
+        el.task.classList.remove('hidden');
+        el.taskText.textContent = total > 1
+            ? `${lesson.goal.text} (${progress}/${total})`
+            : lesson.goal.text;
+        el.task.classList.toggle('done', completed);
+        el.taskIcon.className = completed ? 'fa-solid fa-circle-check' : 'fa-regular fa-circle';
     }
 
-    // ... [KEEP PREVIOUS DESTROY/WALL LOGIC UNCHANGED] ...
-    if (STATE.mode === 'destroy') {
-        if (currentStep.goal === 'destroy_wall') {
-            let targetX = x; let targetY = y;
-            if (e) {
-                const rect = e.target.getBoundingClientRect();
-                const offsetX = e.clientX - rect.left;
-                const offsetY = e.clientY - rect.top;
-                let isLeft = offsetX < rect.width / 2;
-                let isTop = offsetY < rect.height / 2;
-                if (isTop) targetY = y - 1;
-                if (isLeft) targetX = x - 1;
-            }
-            let found = STATE.walls.findIndex(w => (w.x === targetX && w.y === targetY) || (w.type === 'horizontal' && w.y === targetY && (w.x === targetX || w.x === targetX - 1)) || (w.type === 'vertical' && w.x === targetX && (w.y === targetY || w.y === targetY - 1)));
-            if (found !== -1) { STATE.walls.splice(found, 1); setMode('move'); renderBoard(); nextStep(); }
-        }
-        return;
-    }
-
-    if (STATE.mode === 'wall') {
-        if (currentStep.goal === 'place_wall') {
-            const orientation = STATE.wallOrientation;
-            if (currentStep.orientation && orientation !== currentStep.orientation) return;
-            let targetX = x; let targetY = y;
-            if (e) {
-                const rect = e.target.getBoundingClientRect();
-                const offsetX = e.clientX - rect.left;
-                const offsetY = e.clientY - rect.top;
-                let isLeft = offsetX < rect.width / 2;
-                let isTop = offsetY < rect.height / 2;
-                if (orientation === 'vertical') { if (isLeft) targetX = x - 1; } else { if (isTop) targetY = y - 1; }
-            }
-            if (targetX < 0 || targetY < 0) return;
-            if (orientation === 'vertical' && targetX >= GRID_COLS - 1) return;
-            if (orientation === 'horizontal' && targetY >= GRID_ROWS - 1) return;
-            const exists = STATE.walls.some(w => w.x === targetX && w.y === targetY && w.type === orientation);
-            if (exists) return;
-
-            const isSame = STATE.pendingAction && STATE.pendingAction.x === targetX && STATE.pendingAction.y === targetY;
-            if (isSame) {
-                STATE.walls.push({ x: targetX, y: targetY, type: orientation });
-                STATE.pendingAction = null;
-                renderBoard();
-                nextStep();
-            } else {
-                STATE.pendingAction = { type: 'wall', x: targetX, y: targetY, orientation };
-                renderBoard();
-            }
-        }
-    }
+    const last = lessonIndex === LESSONS.length - 1;
+    el.nextBtn.disabled = !completed;
+    el.nextLabel.textContent = !completed
+        ? (total ? 'Görevi tamamla' : 'Devam')
+        : (last ? 'Oyuna başla' : 'Sonraki');
 }
 
-function handleCellHover(x, y, e) {
-    if (STATE.mode !== 'wall') return;
-    clearPreviews();
-    let targetX = x; let targetY = y;
-    const rect = e.target.getBoundingClientRect();
-    const offsetX = e.clientX - rect.left; const offsetY = e.clientY - rect.top;
-    let isLeft = offsetX < rect.width / 2; let isTop = offsetY < rect.height / 2;
-    if (STATE.wallOrientation === 'vertical') { if (isLeft) targetX = x - 1; } else { if (isTop) targetY = y - 1; }
-    if (targetX < 0 || targetY < 0) return;
-    if (STATE.wallOrientation === 'vertical' && targetX >= GRID_COLS - 1) return;
-    if (STATE.wallOrientation === 'horizontal' && targetY >= GRID_ROWS - 1) return;
-    const cell = document.querySelector(`.cell[data-x="${targetX}"][data-y="${targetY}"]`);
-    if (cell) {
-        const w = document.createElement('div');
-        w.className = `wall ${STATE.wallOrientation} preview`;
-        cell.appendChild(w);
-    }
-}
-
-function clearPreviews() { document.querySelectorAll('.wall.preview').forEach(e => e.remove()); }
-function setMode(mode) {
-    STATE.mode = mode;
-    document.getElementById('move-mode-btn').classList.toggle('active', mode === 'move');
-    document.getElementById('wall-mode-btn').classList.toggle('active', mode === 'wall');
-    const rBtn = document.getElementById('wall-rotate-btn');
-    if (mode === 'wall') rBtn.classList.remove('hidden'); else rBtn.classList.add('hidden');
-    const currentStep = STATE.lesson.steps[STATE.step];
-    if (currentStep.goal === 'mode_switch' && currentStep.mode === mode) nextStep();
-}
-function toggleOrientation() {
-    STATE.wallOrientation = STATE.wallOrientation === 'horizontal' ? 'vertical' : 'horizontal';
-    const orientationSpan = document.getElementById('wall-orientation');
-    if (orientationSpan) orientationSpan.textContent = STATE.wallOrientation === 'vertical' ? 'Dikey' : 'Yatay';
-    const currentStep = STATE.lesson.steps[STATE.step];
-    if (currentStep && currentStep.goal === 'rotate_wall') nextStep();
-}
-function getValidMoves(cx, cy) {
-    const moves = [];
-    const dirs = [[0, -1], [0, 1], [-1, 0], [1, 0]];
-    dirs.forEach(d => {
-        const nx = cx + d[0]; const ny = cy + d[1];
-        if (nx >= 0 && nx < GRID_COLS && ny >= 0 && ny < GRID_ROWS) {
-            if (!isBlockedByWall(cx, cy, nx, ny)) { moves.push({ x: nx, y: ny }); }
-        }
+function renderDots() {
+    el.dots.innerHTML = '';
+    LESSONS.forEach((_, i) => {
+        const d = document.createElement('button');
+        d.type = 'button';
+        d.className = 'progress-dot' + (i === lessonIndex ? ' current' : '') + (i < lessonIndex ? ' passed' : '');
+        d.setAttribute('aria-label', `${i + 1}. bölüm: ${LESSONS[i].title}`);
+        d.addEventListener('click', () => loadLesson(i));
+        el.dots.appendChild(d);
     });
-    return moves;
 }
-function isBlockedByWall(x1, y1, x2, y2) {
-    if (STATE.ghostMode) return false;
-    if (x1 === x2) { const row = Math.min(y1, y2); return STATE.walls.some(w => w.type === 'horizontal' && w.y === row && (w.x === x1 || w.x === x1 - 1)); }
-    if (y1 === y2) { const col = Math.min(x1, x2); return STATE.walls.some(w => w.type === 'vertical' && w.x === col && (w.y === y1 || w.y === y1 - 1)); }
-    return false;
+
+function renderGuide() {
+    el.guide.innerHTML = '';
+    [...INVENTORY_TYPES, 'time_bonus', 'star'].forEach(type => {
+        const info = POWERUP_INFO[type];
+        const row = document.createElement('div');
+        row.className = 'guide-row';
+        row.style.setProperty('--pu-color', powerupCssColor(type));
+        row.innerHTML = `
+            <span class="guide-icon"><i class="${powerupIconClass(type)}"></i></span>
+            <span class="guide-body">
+                <strong>${info.label}</strong>
+                <small>${POWERUP_DESC[type] || ''}</small>
+            </span>`;
+        el.guide.appendChild(row);
+    });
+}
+
+// --- Görev takibi ----------------------------------------------------------
+
+function emit(event) {
+    const lesson = LESSONS[lessonIndex];
+    if (completed || !lesson.goal.total) return;
+    if (!lesson.goal.accept(event, ctx)) return;
+
+    progress++;
+    if (progress >= lesson.goal.total) {
+        completed = true;
+        buzz([12, 40, 12]);
+        if (lesson.done) showToast(lesson.done, 'success');
+    }
+    updateTask();
+}
+
+// --- Tahta etkileşimi ------------------------------------------------------
+
+function handleTap(cx, cy) {
+    if (!state || LESSONS[lessonIndex].setup.hideBoard) return;
+    if (drag) return;
+
+    const moves = getValidMoves(boardState(), 'p1');
+    if (!moves.some(m => m.x === cx && m.y === cy)) return;
+
+    state.players.p1.x = cx;
+    state.players.p1.y = cy;
+
+    const idx = state.powerups.findIndex(p => p.x === cx && p.y === cy);
+    if (idx !== -1) {
+        const type = state.powerups[idx].type;
+        state.powerups.splice(idx, 1);
+        const inv = state.players.p1.inventory;
+        inv[type] = (inv[type] || 0) + 1;
+        showToast(`${POWERUP_INFO[type].label} alındı!`, 'success');
+        renderPowerupBar(LESSONS[lessonIndex]);
+        emit({ type: 'collect', powerup: type });
+    }
+
+    render();
+    emit({ type: 'move', to: { x: cx, y: cy } });
+}
+
+// --- Güçlendirme envanteri -------------------------------------------------
+
+function renderPowerupBar(lesson) {
+    const shown = lesson.ui.powerups;
+    if (!shown) {
+        el.powerupControls.classList.add('hidden');
+        el.powerupControls.innerHTML = '';
+        return;
+    }
+
+    const inv = state.players.p1.inventory || {};
+    const types = [...new Set([...shown, ...Object.keys(inv).filter(t => inv[t] > 0)])];
+    el.powerupControls.classList.toggle('hidden', types.length === 0);
+    el.powerupControls.innerHTML = '';
+
+    types.forEach(type => {
+        const count = inv[type] || 0;
+        const btn = document.createElement('button');
+        btn.id = `btn-${type}`;
+        btn.className = 'inventory-btn' + (count > 0 ? ' active' : '');
+        btn.title = POWERUP_INFO[type].label;
+        btn.style.setProperty('--pu-color', powerupCssColor(type));
+        btn.style.setProperty('--pu-glow', powerupRgba(type, 0.45));
+        btn.innerHTML = `<i class="pu-icon ${powerupIconClass(type)}"></i> <span class="badge">${count}</span>`;
+
+        if (type === 'destroy') {
+            bindDragSource(btn, 'destroy');
+        } else {
+            btn.addEventListener('click', () => usePowerup(type));
+        }
+        el.powerupControls.appendChild(btn);
+    });
+}
+
+function usePowerup(type) {
+    const inv = state.players.p1.inventory || {};
+    if ((inv[type] || 0) <= 0) {
+        showToast('Bu güçlendirmeye sahip değilsin.', 'error');
+        return;
+    }
+    inv[type] = inv[type] - 1;
+    showToast(`${POWERUP_INFO[type].label} kullanıldı!`, 'success');
+    renderPowerupBar(LESSONS[lessonIndex]);
+    emit({ type: 'use', powerup: type });
+}
+
+// --- Sürükle-bırak (oyundaki ile aynı davranış) ----------------------------
+
+function cancelDrag() {
+    const d = drag;
+    drag = null;
+    if (d && d.el) d.el.classList.remove('dragging');
+    if (renderer) renderer.setDragGhost(null);
+}
+
+function bindDragSource(source, kind) {
+    if (!source) return;
+    const isDestroy = kind === 'destroy';
+
+    source.addEventListener('pointerdown', (e) => {
+        if (drag || !state) return;
+        if (isDestroy) {
+            if ((state.players.p1.inventory.destroy || 0) <= 0) { showToast('Duvar kırıcın yok!', 'error'); return; }
+            if (state.walls.length === 0) { showToast('Tahtada kırılacak duvar yok!', 'error'); return; }
+        } else if ((state.players.p1.wallsLeft || 0) <= 0) {
+            showToast('Duvar hakkın bitti!', 'error');
+            return;
+        }
+        e.preventDefault();
+        try { source.setPointerCapture(e.pointerId); } catch (_) { /* yoksay */ }
+        drag = { kind, el: source, pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, moved: false, target: null };
+        source.classList.add('dragging');
+        buzz(8);
+    }, { passive: false });
+
+    source.addEventListener('pointermove', (e) => {
+        if (!drag || drag.pointerId !== e.pointerId) return;
+        e.preventDefault();
+        if (!drag.moved && Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY) > DRAG_MOVE_THRESHOLD) {
+            drag.moved = true;
+        }
+        if (drag.moved) updateGhost(e.clientX, e.clientY);
+    }, { passive: false });
+
+    const finish = (e) => {
+        if (!drag || drag.pointerId !== e.pointerId) return;
+        e.preventDefault();
+        endDrag(e.type === 'pointercancel');
+    };
+    source.addEventListener('pointerup', finish);
+    source.addEventListener('pointercancel', finish);
+    source.addEventListener('lostpointercapture', () => { if (drag) cancelDrag(); });
+}
+
+function updateGhost(clientX, clientY) {
+    if (!renderer) return;
+    const lift = renderer.cellScreenSize * (DRAG_LIFT_CELLS[drag.kind] || 0.7);
+    const p = renderer.clientToCanvas(clientX, clientY - lift);
+    const pad = renderer.cs * 0.75;
+
+    if (p.x < -pad || p.y < -pad || p.x > renderer.cw + pad || p.y > renderer.ch + pad) {
+        drag.target = null;
+        renderer.setDragGhost(null);
+        return;
+    }
+
+    if (drag.kind === 'destroy') {
+        const wall = renderer.nearestWall(p.x, p.y, state.walls);
+        drag.target = wall || null;
+        renderer.setDragGhost({ kind: 'destroy', wall });
+        return;
+    }
+
+    const slot = renderer.slotAt(p.x, p.y, drag.kind);
+    const reason = wallInvalidReason(boardState(), slot.x, slot.y, drag.kind);
+    drag.target = { x: slot.x, y: slot.y, orientation: drag.kind, valid: !reason, reason };
+    renderer.setDragGhost({ kind: 'wall', ...drag.target });
+}
+
+function endDrag(cancelled) {
+    const d = drag;
+    cancelDrag();
+    if (cancelled || !d) return;
+
+    if (!d.moved) {
+        showToast(d.kind === 'destroy'
+            ? 'Bombayı kırmak istediğin duvarın üzerine sürükle.'
+            : 'Duvarı tahtada istediğin yere sürükleyip bırak.');
+        return;
+    }
+    if (!d.target) return;
+
+    if (d.kind === 'destroy') {
+        state.walls = state.walls.filter(w => !(w.x === d.target.x && w.y === d.target.y && w.type === d.target.type));
+        state.players.p1.inventory.destroy = Math.max(0, (state.players.p1.inventory.destroy || 0) - 1);
+        renderPowerupBar(LESSONS[lessonIndex]);
+        render();
+        buzz(20);
+        emit({ type: 'destroy' });
+        return;
+    }
+
+    if (!d.target.valid) {
+        showToast(WALL_ERRORS[d.target.reason] || 'Buraya duvar koyamazsın!', 'error');
+        buzz([40, 60, 40]);
+        emit({ type: 'invalid-wall', reason: d.target.reason });
+        return;
+    }
+
+    state.walls.push({ x: d.target.x, y: d.target.y, type: d.target.orientation, owner: 'p1' });
+    state.players.p1.wallsLeft = Math.max(0, (state.players.p1.wallsLeft || 0) - 1);
+    updateWallCount();
+    render();
+    buzz(18);
+    emit({ type: 'wall', orientation: d.target.orientation });
+}
+
+function updateWallCount() {
+    const left = state ? (state.players.p1.wallsLeft || 0) : 0;
+    el.wallCountValue.textContent = left;
+    document.getElementById('wall-count').classList.toggle('empty', left <= 0);
+    [el.wallV, el.wallH].forEach(b => b && b.classList.toggle('disabled', left <= 0));
+}
+
+// --- Başlangıç -------------------------------------------------------------
+
+function init() {
+    const container = document.getElementById('board-canvas-container');
+    renderer = new GameRenderer(container);
+    renderer.onCellClick = handleTap;
+    renderer.setFlipped(true); // oyundaki gibi: sen alttasın
+
+    bindDragSource(el.wallV, 'vertical');
+    bindDragSource(el.wallH, 'horizontal');
+
+    // Emniyet ağı: olay kaynağa ulaşmazsa sürükleme yine de kapansın
+    ['pointerup', 'pointercancel'].forEach(type => {
+        window.addEventListener(type, (e) => {
+            if (!drag) return;
+            if (drag.pointerId !== undefined && e.pointerId !== undefined && drag.pointerId !== e.pointerId) return;
+            endDrag(type === 'pointercancel');
+        });
+    });
+
+    el.nextBtn.addEventListener('click', () => {
+        if (!completed) return;
+        if (lessonIndex === LESSONS.length - 1) window.location.href = 'index.html';
+        else loadLesson(lessonIndex + 1);
+    });
+    document.getElementById('back-btn').addEventListener('click', () => {
+        if (lessonIndex > 0) loadLesson(lessonIndex - 1);
+        else window.location.href = 'index.html';
+    });
+    document.getElementById('skip-btn').addEventListener('click', () => { window.location.href = 'index.html'; });
+
+    let resizeTimer = null;
+    window.addEventListener('resize', () => {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(() => { if (renderer) { renderer._onResize(); render(); } }, 200);
+    });
+
+    // Oyundaki rehber kartlarından gelen ?topic=... bağlantısı ilgili bölümü açar
+    const topic = new URLSearchParams(window.location.search).get('topic');
+    const found = topic ? LESSONS.findIndex(l => l.id === topic || (l.topics || []).includes(topic)) : -1;
+    loadLesson(found >= 0 ? found : 0);
 }
 
 init();
