@@ -1,17 +1,7 @@
 // game-renderer.js — WebGL Board Renderer (PixiJS)
 // Requires window.PIXI from PixiJS CDN
 
-const POWERUP_EMOJI = {
-    destroy: '💣', ghost: '👻', freeze: '❄', wall: '🧱',
-    return: '↩', chaos: '🔀', double_turn: '🔁', hourglass: '⏳',
-    time_bonus: '⏱', star: '⭐'
-};
-
-const POWERUP_COLOR = {
-    destroy: 0xef4444, ghost: 0xa855f7, freeze: 0x0ea5e9, wall: 0xf97316,
-    return: 0x10b981, chaos: 0xd946ef, double_turn: 0xeab308, hourglass: 0xb45309,
-    time_bonus: 0x3b82f6, star: 0xffd700
-};
+import { powerupGlyph, powerupColor } from "./powerups.js";
 
 export class GameRenderer {
     constructor(container) {
@@ -352,8 +342,8 @@ export class GameRenderer {
         powerups.forEach(p => {
             const { x: px, y: py } = this._cp(p.x, p.y);
             const cx = px + this.cs / 2, cy = py + this.cs / 2;
-            const color = POWERUP_COLOR[p.type] || 0xffffff;
-            const emoji = POWERUP_EMOJI[p.type] || '?';
+            const color = powerupColor(p.type);
+            const glyph = powerupGlyph(p.type);
 
             const bg = new PIXI.Graphics();
             const r2 = this.cs * 0.3;
@@ -361,7 +351,14 @@ export class GameRenderer {
             bg.lineStyle(1.5, color, 0.5).drawCircle(cx, cy, r2).lineStyle(0);
             this.powerupC.addChild(bg);
 
-            const txt = new PIXI.Text(emoji, { fontSize: fs, align: 'center' });
+            // Envanterdeki ikonun aynısı: aynı glif, aynı renk
+            const txt = new PIXI.Text(glyph.text, {
+                fontSize: fs,
+                fontFamily: glyph.fontFamily,
+                fontWeight: glyph.fontWeight,
+                align: 'center',
+                fill: color
+            });
             txt.anchor.set(0.5);
             txt.x = cx; txt.y = cy;
             // Star legendary gets scale pulse via ticker

@@ -1039,13 +1039,24 @@ header {
     filter: grayscale(1);
 }
 
+/* Güçlendirme ikonu: tahtadaki ikonun aynısı (bkz. powerups.js) */
+.pu-icon {
+    font-size: 1em;          /* düğmenin boyutunu izler */
+    line-height: 1;
+}
+
+/* Renk de tek kaynaktan: her güçlendirme kendi rengiyle */
+.inventory-btn.active .pu-icon {
+    color: var(--pu-color, #fff);
+}
+
 .inventory-btn.active {
-    background: rgba(255, 255, 255, 0.25);
-    border-color: rgba(255, 255, 255, 0.8);
+    background: rgba(255, 255, 255, 0.14);
+    border-color: var(--pu-color, rgba(255, 255, 255, 0.8));
     cursor: pointer;
     opacity: 1;
     filter: grayscale(0);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3), 0 0 10px var(--pu-glow, transparent);
 }
 
 .inventory-btn .badge {
@@ -1063,22 +1074,6 @@ header {
 
 .inventory-btn.active .badge {
     opacity: 1;
-}
-
-#btn-destroy.active i {
-    color: #ef4444;
-}
-
-#btn-ghost.active i {
-    color: #a855f7;
-}
-
-#btn-freeze.active i {
-    color: #0ea5e9;
-}
-
-#btn-wall.active i {
-    color: #f97316;
 }
 
 /* GAME OVER & ANIMATIONS */
@@ -1275,22 +1270,6 @@ header {
 }
 
 /* NEW POWERUPS */
-#btn-return.active i {
-    color: #10b981;
-}
-
-#btn-chaos.active i {
-    color: #d946ef;
-}
-
-#btn-double_turn.active i {
-    color: #eab308;
-}
-
-#btn-hourglass.active i {
-    color: #b45309;
-}
-
 /* LEGENDARY STAR ANIMATION */
 @keyframes pulseGlow {
     0% {
@@ -1419,22 +1398,6 @@ header {
 }
 
 /* NEW POWERUPS */
-#btn-return.active i {
-    color: #10b981;
-}
-
-#btn-chaos.active i {
-    color: #d946ef;
-}
-
-#btn-double_turn.active i {
-    color: #eab308;
-}
-
-#btn-hourglass.active i {
-    color: #b45309;
-}
-
 /* SOUND CONTROLS - HEADER EXPANDABLE */
 #header-sound-group {
     position: relative;
