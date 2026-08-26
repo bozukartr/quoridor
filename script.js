@@ -4,7 +4,7 @@ import { ref, set, onValue, update, push, child, get, remove } from "https://www
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { GameRenderer } from "./game-renderer.js";
 import { LocalRoom } from "./local-room.js";
-import { chooseAiAction, aiThinkDelay, AI_LEVELS, getValidMoves as aiValidMoves, distanceToGoal, goalRowFor } from "./ai.js";
+import { chooseAiAction, aiThinkDelay, AI_LEVELS, getValidMoves as aiValidMoves, distanceToGoal, goalRowFor, wallInvalidReason } from "./ai.js";
 
 // Game State Constants
 const GRID_COLS = 7;
@@ -13,8 +13,6 @@ const STATE = {
     roomId: null,
     playerId: null, // 'p1' (Blue) or 'p2' (Red)
     isMyTurn: false,
-    mode: 'move', // 'move' or 'wall'
-    wallOrientation: 'vertical', // 'vertical' or 'horizontal'
     board: [],
     players: {
         p1: { x: 3, y: 0, wallsLeft: 8, hasPowerup: false },
@@ -25,8 +23,9 @@ const STATE = {
     gameActive: false,
     activeEffects: { p1: { chaos: false, hourglass: false }, p2: { chaos: false, hourglass: false } }, // New State
     timeRemaining: { p1: 90, p2: 90 }, // Chess Timer (Seconds)
-    pendingAction: null, // { type: 'move'|'wall', x, y, orientation? }
     usedPowerupsInTurn: new Set(), // Track usage per turn
+    drag: null, // Süregelen sürükleme oturumu (duvar veya duvar kırıcı)
+    wallHintShown: false,
     vsAI: false, // Tek kişilik mod (yapay zekaya karşı)
     aiLevel: 'medium', // 'easy' | 'medium' | 'hard'
     localRoom: null, // Tek kişilik modda Firebase yerine kullanılan yerel oda
@@ -62,10 +61,10 @@ const screens = {
     gameOver: document.getElementById('game-over-screen')
 };
 const controls = {
-    moveBtn: document.getElementById('move-mode-btn'),
-    wallBtn: document.getElementById('wall-mode-btn'),
-    rotateBtn: document.getElementById('wall-rotate-btn'),
-    orientationSpan: document.getElementById('wall-orientation')
+    wallV: document.getElementById('wall-drag-vertical'),
+    wallH: document.getElementById('wall-drag-horizontal'),
+    countBox: document.getElementById('wall-count'),
+    countValue: document.getElementById('wall-count-value')
 };
 
 // --- Render scheduler (throttled via rAF) ---
@@ -76,10 +75,10 @@ function scheduleRender() {
     requestAnimationFrame(() => {
         _renderPending = false;
         if (!renderer || !STATE.gameActive) return;
-        const validMoves = STATE.isMyTurn && STATE.mode === 'move'
+        const validMoves = STATE.isMyTurn
             ? getValidMoves(STATE.players[STATE.playerId].x, STATE.players[STATE.playerId].y)
             : null;
-        renderer.update(STATE, STATE.pendingAction, validMoves);
+        renderer.update(STATE, null, validMoves);
     });
 }
 
@@ -161,17 +160,16 @@ function setupEventListeners() {
         });
     });
 
-    // Game Controls
-    controls.moveBtn.addEventListener('click', () => setMode('move'));
-    controls.wallBtn.addEventListener('click', () => setMode('wall'));
-    controls.rotateBtn.addEventListener('click', toggleOrientation);
+    // Duvarlar sürüklenerek konur (tahta her zaman hareket modunda)
+    bindDragSource(controls.wallV, 'vertical');
+    bindDragSource(controls.wallH, 'horizontal');
+    bindDragSource(document.getElementById('btn-destroy'), 'destroy');
 
     // Inventory Controls
     const bindPowerup = (id, type) => {
         const btn = document.getElementById(id);
         if (btn) btn.addEventListener('click', () => activatePowerup(type));
     };
-    bindPowerup('btn-destroy', 'destroy');
     bindPowerup('btn-ghost', 'ghost');
     bindPowerup('btn-freeze', 'freeze');
     bindPowerup('btn-wall', 'wall');
@@ -209,10 +207,7 @@ function activatePowerup(type) {
         }
     }
 
-    if (type === 'destroy') {
-        setMode('destroy');
-        showToast('💣 Yıkmak istediğiniz duvarı seçin!');
-    } else if (type === 'ghost') {
+    if (type === 'ghost') {
         if (STATE.ghostMode) {
             STATE.ghostMode = false;
             showToast("👻 Hayalet Modu İptal Edildi.");
@@ -220,7 +215,6 @@ function activatePowerup(type) {
             STATE.ghostMode = true;
             showToast('👻 Hayalet Modu Aktif! (Harekette harcanır)');
             STATE.usedPowerupsInTurn.add('ghost');
-            setMode('move');
         }
     } else if (type === 'freeze') {
         showModal('Dondurucu ❄️', 'Rakibi dondurmak (duvar koyamaz) istiyor musunuz?', () => {
@@ -284,9 +278,9 @@ function initRenderer() {
     if (!container) return;
     if (renderer) { renderer.destroy(); renderer = null; }
     renderer = new GameRenderer(container);
+    // Tahtaya dokunmak her zaman hareket demek; duvar hayaleti sürükleme
+    // oturumu tarafından yönetiliyor, bu yüzden hover geri çağrısı yok.
     renderer.onCellClick = handleCellClick;
-    renderer.onCellHover = handleCellHover;
-    renderer.onCellLeave = () => renderer.clearHover();
 }
 
 // Window resize → renderer resize (debounced)
@@ -311,59 +305,174 @@ function showToast(msg, type = 'info') {
     }, 3000);
 }
 
-function handleCellHover(cx, cy, offsetX, offsetY, cellSize, isFlipped) {
+// --- SÜRÜKLE-BIRAK: DUVAR KOYMA VE DUVAR KIRMA ---
+
+// Hayalet, parmağın kaç kare yukarısında dursun. Nişan noktası dokunulan yer
+// değil, hayaletin oturduğu yuvadır — böylece parmak hedefi kapatmaz.
+// Dikey duvar aşağı doğru iki kare uzadığı için daha fazla kaldırma ister;
+// amaç her iki yönde de hayaletin alt kenarının parmağın üstünde kalması.
+const DRAG_LIFT_CELLS = { vertical: 1.6, horizontal: 0.7, destroy: 1.0 };
+const DRAG_MOVE_THRESHOLD = 6; // px — bunun altı "sürükleme değil, dokunma" sayılır
+
+const WALL_ERRORS = {
+    'overlap': 'Burada zaten duvar var!',
+    'blocks-path': 'Yolu tamamen kapatamazsın!',
+    'blocks-powerup': 'Özelliklerin önü tamamen kapatılamaz!',
+    'out-of-board': 'Duvar tahtanın dışına konamaz!'
+};
+
+function buzz(pattern) {
+    if (navigator.vibrate) navigator.vibrate(pattern);
+}
+
+// Duvar sürüklemesine başlanabilir mi? Başlanamıyorsa nedenini söyler.
+function wallDragBlockedReason() {
+    if (!STATE.gameActive || !STATE.isMyTurn) return 'Sıra sende değil!';
+    if (STATE.frozenPlayer === STATE.playerId) return '❄️ Donduruldun! Bu tur duvar koyamazsın.';
+    const me = STATE.players[STATE.playerId];
+    if (!me || (me.wallsLeft || 0) <= 0) return 'Duvar hakkın bitti!';
+    return null;
+}
+
+function destroyDragBlockedReason() {
+    if (!STATE.gameActive || !STATE.isMyTurn) return 'Sıra sende değil!';
+    const me = STATE.players[STATE.playerId];
+    const count = (me && me.inventory && me.inventory.destroy) || 0;
+    if (count <= 0) return 'Duvar kırıcın yok!';
+    if (!STATE.walls || STATE.walls.length === 0) return 'Tahtada kırılacak duvar yok!';
+    return null;
+}
+
+/**
+ * Bir düğmeyi sürükleme kaynağı yapar.
+ * @param {HTMLElement} el kaynak düğme
+ * @param {'vertical'|'horizontal'|'destroy'} kind sürüklenen şey
+ */
+function bindDragSource(el, kind) {
+    if (!el) return;
+    const isDestroy = kind === 'destroy';
+
+    el.addEventListener('pointerdown', (e) => {
+        if (STATE.drag) return;
+        const blocked = isDestroy ? destroyDragBlockedReason() : wallDragBlockedReason();
+        if (blocked) {
+            showToast(blocked, 'error');
+            buzz([40, 60, 40]);
+            return;
+        }
+        e.preventDefault();
+        try { el.setPointerCapture(e.pointerId); } catch (_) { /* eski tarayıcı */ }
+
+        STATE.drag = {
+            kind, el,
+            pointerId: e.pointerId,
+            startX: e.clientX, startY: e.clientY,
+            moved: false,
+            target: null   // {x,y,orientation,valid} veya kırılacak duvar
+        };
+        el.classList.add('dragging');
+        buzz(8);
+    }, { passive: false });
+
+    el.addEventListener('pointermove', (e) => {
+        const drag = STATE.drag;
+        if (!drag || drag.pointerId !== e.pointerId) return;
+        e.preventDefault();
+
+        if (!drag.moved &&
+            Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY) > DRAG_MOVE_THRESHOLD) {
+            drag.moved = true;
+        }
+        if (drag.moved) updateDragGhost(drag, e.clientX, e.clientY);
+    }, { passive: false });
+
+    const finish = (e) => {
+        const drag = STATE.drag;
+        if (!drag || drag.pointerId !== e.pointerId) return;
+        e.preventDefault();
+        endDrag(drag, e.type === 'pointercancel');
+    };
+    el.addEventListener('pointerup', finish);
+    el.addEventListener('pointercancel', finish);
+}
+
+// Parmağın konumundan hayaletin oturacağı yuvayı hesaplar ve çizdirir.
+function updateDragGhost(drag, clientX, clientY) {
     if (!renderer) return;
-    if (!STATE.gameActive || !STATE.isMyTurn || STATE.mode !== 'wall') {
-        renderer.clearHover();
+    const lift = renderer.cellScreenSize * (DRAG_LIFT_CELLS[drag.kind] || 0.7);
+    const p = renderer.clientToCanvas(clientX, clientY - lift);
+
+    // Hayalet tahtadan belirgin şekilde çıktıysa hedef yok (bırakınca iptal)
+    const pad = renderer.cs * 0.75;
+    if (p.x < -pad || p.y < -pad || p.x > renderer.cw + pad || p.y > renderer.ch + pad) {
+        drag.target = null;
+        renderer.setDragGhost(null);
         return;
     }
 
-    let isLeft = offsetX < cellSize / 2;
-    let isTop = offsetY < cellSize / 2;
-    if (isFlipped) { isLeft = !isLeft; isTop = !isTop; }
-
-    let targetX = cx, targetY = cy;
-    if (STATE.wallOrientation === 'vertical') {
-        if (isLeft) targetX = cx - 1;
-    } else {
-        if (isTop) targetY = cy - 1;
-    }
-
-    if (targetX < 0 || targetY < 0 ||
-        (STATE.wallOrientation === 'vertical' && targetX >= GRID_COLS - 1) ||
-        (STATE.wallOrientation === 'horizontal' && targetY >= GRID_ROWS - 1)) {
-        renderer.clearHover();
+    if (drag.kind === 'destroy') {
+        const wall = renderer.nearestWall(p.x, p.y, STATE.walls);
+        drag.target = wall || null;
+        renderer.setDragGhost({ kind: 'destroy', wall });
         return;
     }
 
-    renderer.setHover({ x: targetX, y: targetY, orientation: STATE.wallOrientation });
+    const slot = renderer.slotAt(p.x, p.y, drag.kind);
+    const reason = wallInvalidReason(boardSnapshot(), slot.x, slot.y, drag.kind);
+    const target = { x: slot.x, y: slot.y, orientation: drag.kind, valid: !reason, reason };
+
+    // Yuva değiştiyse hafif titreşimle geri bildirim ver
+    const prev = drag.target;
+    if (!prev || prev.x !== target.x || prev.y !== target.y) buzz(5);
+
+    drag.target = target;
+    renderer.setDragGhost({ kind: 'wall', ...target });
+}
+
+function endDrag(drag, cancelled) {
+    drag.el.classList.remove('dragging');
+    renderer && renderer.setDragGhost(null);
+    STATE.drag = null;
+
+    if (cancelled) return;
+
+    // Sürüklemeden bırakıldıysa: nasıl kullanılacağını anlat
+    if (!drag.moved) {
+        showToast(drag.kind === 'destroy'
+            ? '💣 Kırmak istediğin duvarın üzerine sürükle.'
+            : '🧱 Duvarı tahtada istediğin yere sürükleyip bırak.');
+        return;
+    }
+
+    const target = drag.target;
+    if (!target) return; // tahtanın dışında bırakıldı — sessizce iptal
+
+    if (drag.kind === 'destroy') {
+        destroyWall(target);
+        return;
+    }
+    if (!target.valid) {
+        showToast(WALL_ERRORS[target.reason] || 'Buraya duvar koyamazsın!', 'error');
+        buzz([40, 60, 40]);
+        return;
+    }
+    placeWall(target.x, target.y, target.orientation);
 }
 
 // --- GAME LOGIC ---
 
-function setMode(mode) {
-    STATE.mode = mode;
-    controls.moveBtn.classList.toggle('active', mode === 'move');
-    controls.wallBtn.classList.toggle('active', mode === 'wall');
-
-    // Clear pending when switching modes
-    STATE.pendingAction = null;
-
-    if (mode === 'wall') {
-        controls.rotateBtn.classList.remove('hidden');
-        updateWallCounts();
-    } else {
-        controls.rotateBtn.classList.add('hidden');
-    }
-}
-
-
 function updateWallCounts() {
     if (!STATE.playerId) return;
     const me = STATE.players[STATE.playerId];
-    const left = me.wallsLeft !== undefined ? me.wallsLeft : 10;
-    // Update button text
-    controls.wallBtn.innerHTML = `<i class="fa-solid fa-block-brick"></i> Duvar <span style="font-size:0.9em; opacity:0.8; margin-left:4px;">(${left})</span>`;
+    const left = (me && me.wallsLeft !== undefined) ? me.wallsLeft : 0;
+
+    if (controls.countValue) controls.countValue.textContent = left;
+    if (controls.countBox) controls.countBox.classList.toggle('empty', left <= 0);
+
+    const usable = left > 0 && STATE.isMyTurn && STATE.frozenPlayer !== STATE.playerId;
+    [controls.wallV, controls.wallH].forEach(btn => {
+        if (btn) btn.classList.toggle('disabled', !usable);
+    });
 }
 
 const POWERUPS = ['destroy', 'ghost', 'freeze', 'wall', 'return', 'chaos', 'double_turn', 'hourglass'];
@@ -487,113 +596,35 @@ function generatePowerup(activePowerups = []) {
     return null; // Failed to place
 }
 
-function toggleOrientation() {
-    STATE.wallOrientation = STATE.wallOrientation === 'vertical' ? 'horizontal' : 'vertical';
-    controls.orientationSpan.textContent = STATE.wallOrientation === 'vertical' ? 'Dikey' : 'Yatay';
-    sounds.play('wall_rotate');
-}
-
-// Called by GameRenderer with canvas-converted coordinates
-function handleCellClick(cx, cy, offsetX, offsetY, cellSize, isFlipped) {
+// Tahtaya dokunmak her zaman hareket demektir (duvarlar sürüklenerek konur).
+function handleCellClick(cx, cy) {
     if (!STATE.gameActive || !STATE.isMyTurn) return;
+    if (STATE.drag) return; // sürükleme sürerken tahta tıklaması yok
 
-    let actionType = STATE.mode;
     let targetX = cx, targetY = cy;
-    let orientation = STATE.wallOrientation;
 
-    if (actionType === 'wall' || actionType === 'destroy') {
-        let isLeft = offsetX < cellSize / 2;
-        let isTop = offsetY < cellSize / 2;
-        if (isFlipped) { isLeft = !isLeft; isTop = !isTop; }
-
-        if (actionType === 'destroy') {
-            const dx = Math.abs(offsetX / cellSize - 0.5);
-            const dy = Math.abs(offsetY / cellSize - 0.5);
-            orientation = dx > dy ? 'vertical' : 'horizontal';
-            if (isLeft) targetX = cx - 1;
-            if (isTop) targetY = cy - 1;
-        } else {
-            if (orientation === 'vertical') { if (isLeft) targetX = cx - 1; }
-            else { if (isTop) targetY = cy - 1; }
+    const myEffects = STATE.activeEffects?.[STATE.playerId];
+    if (myEffects?.chaos) {
+        const validMoves = getValidMoves(STATE.players[STATE.playerId].x, STATE.players[STATE.playerId].y);
+        const others = validMoves.filter(m => m.x !== targetX || m.y !== targetY);
+        const choices = others.length > 0 ? others : validMoves;
+        if (choices.length > 0) {
+            const rand = choices[Math.floor(Math.random() * choices.length)];
+            targetX = rand.x; targetY = rand.y;
+            showToast("🔀 Şaşırtma etkisi! Farklı yöne gittin!", "error");
         }
     }
-
-    if (targetX < 0 || targetY < 0) return;
-
-    if (actionType === 'move') {
-        const myEffects = STATE.activeEffects?.[STATE.playerId];
-        if (myEffects?.chaos) {
-            const validMoves = getValidMoves(STATE.players[STATE.playerId].x, STATE.players[STATE.playerId].y);
-            const others = validMoves.filter(m => m.x !== targetX || m.y !== targetY);
-            const choices = others.length > 0 ? others : validMoves;
-            if (choices.length > 0) {
-                const rand = choices[Math.floor(Math.random() * choices.length)];
-                targetX = rand.x; targetY = rand.y;
-                showToast("🔀 Şaşırtma etkisi! Farklı yöne gittin!", "error");
-            }
-        }
-        tryMove(targetX, targetY);
-        clearPendingAction();
-        return;
-    }
-
-    if (actionType === 'destroy') {
-        tryDestroyWall(targetX, targetY, orientation);
-        return;
-    }
-
-    // WALLS — two-step confirmation
-    const isSame = STATE.pendingAction?.type === actionType
-        && STATE.pendingAction?.x === targetX
-        && STATE.pendingAction?.y === targetY
-        && STATE.pendingAction?.orientation === orientation;
-
-    if (isSame) {
-        tryPlaceWall(targetX, targetY);
-        clearPendingAction();
-    } else {
-        let valid = targetX >= 0 && targetY >= 0;
-        if (orientation === 'vertical' && targetX >= GRID_COLS - 1) valid = false;
-        if (orientation === 'horizontal' && targetY >= GRID_ROWS - 1) valid = false;
-        if (STATE.walls.some(w => w.x === targetX && w.y === targetY && w.type === orientation)) valid = false;
-
-        if (valid) {
-            STATE.pendingAction = { type: actionType, x: targetX, y: targetY, orientation };
-            scheduleRender();
-        } else if (actionType === 'wall') {
-            showToast("Geçersiz duvar!", "error");
-        }
-    }
+    tryMove(targetX, targetY);
 }
 
-function clearPendingAction() {
-    STATE.pendingAction = null;
-    scheduleRender();
-}
+// Sürüklenen duvar kırıcı bırakıldığında
+function destroyWall(wall) {
+    const blocked = destroyDragBlockedReason();
+    if (blocked) { showToast(blocked, 'error'); return; }
 
-function tryDestroyWall(x, y, orientation) {
-    // Find absolute match first
-    let wall = STATE.walls.find(w => w.x === x && w.y === y && w.type === orientation);
-
-    // If not found, check neighbors that might span here
-    if (!wall) {
-        if (orientation === 'horizontal') {
-            // Check start at x-1
-            wall = STATE.walls.find(w => w.x === x - 1 && w.y === y && w.type === 'horizontal');
-        } else {
-            // Check start at y-1
-            wall = STATE.walls.find(w => w.type === 'vertical' && w.x === x && w.y === y - 1);
-        }
-    }
-
-    if (!wall) {
-        showToast("Burada kırılabilecek duvar yok!", "error");
-        return;
-    }
-
-    // Send destroy for the FOUND wall (use its x,y)
     sendMove({ type: 'destroy', x: wall.x, y: wall.y, orientation: wall.type });
-    setMode('move');
+    showToast('💣 Duvar kırıldı!', 'success');
+    buzz(20);
 }
 
 function tryMove(targetX, targetY) {
@@ -723,133 +754,22 @@ function isBlockedByWall(x1, y1, x2, y2) {
     return false;
 }
 
-function tryPlaceWall(x, y) {
-    const me = STATE.players[STATE.playerId];
+// Sürüklenen duvar bırakıldığında. Doğrulama ai.js'teki wallInvalidReason ile
+// yapılır — hem oyuncu hem yapay zeka aynı kuralı kullanır.
+function placeWall(x, y, orientation) {
+    const blocked = wallDragBlockedReason();
+    if (blocked) { showToast(blocked, 'error'); return false; }
 
-    if (STATE.frozenPlayer === STATE.playerId) {
-        showToast("❄️ Donduruldunuz! Duvar koyamazsınız.", "error");
-        return;
-    }
-
-    if (me.wallsLeft <= 0) {
-        showToast("Duvar hakkın bitti!", "error");
-        return;
-    }
-
-    // Limits check
-    // V-Wall (x,y) valid for x in 0..5, y in 0..7
-    // H-Wall (x,y) valid for x in 0..5, y in 0..7
-    // Note: GRID_COLS=7 (0..6), GapCols=6 (0..5). GRID_ROWS=9 (0..8), GapRows=8 (0..7).
-    if (x < 0 || x > 5 || y < 0 || y > 7) return;
-
-    // Overlap Check
-    const isOverlap = STATE.walls.some(w => {
-        if (w.x === x && w.y === y && w.type === STATE.wallOrientation) return true;
-        if (STATE.wallOrientation === 'horizontal') {
-            if (w.type === 'horizontal' && w.y === y && (w.x === x - 1 || w.x === x + 1)) return true;
-            if (w.type === 'vertical' && w.x === x && w.y === y) return true;
-        } else {
-            if (w.type === 'vertical' && w.x === x && (w.y === y - 1 || w.y === y + 1)) return true;
-            if (w.type === 'horizontal' && w.x === x && w.y === y) return true;
-        }
+    const reason = wallInvalidReason(boardSnapshot(), x, y, orientation);
+    if (reason) {
+        showToast(WALL_ERRORS[reason] || 'Buraya duvar koyamazsın!', 'error');
         return false;
-    });
-
-    if (isOverlap) {
-        showToast("Geçersiz konum!", "error");
-        return;
     }
 
-    // --- PATH VALIDATION ---
-    const tempWall = { x, y, type: STATE.wallOrientation };
-    STATE.walls.push(tempWall);
-    const p1CanReach = hasPath(STATE.players.p1.x, STATE.players.p1.y, GRID_ROWS - 1);
-    const p2CanReach = hasPath(STATE.players.p2.x, STATE.players.p2.y, 0);
-
-
-    // NEW RULE: Check Powerup Accessibility
-    let powerupsBlocked = false;
-    if (STATE.powerups && STATE.powerups.length > 0) {
-        for (const p of STATE.powerups) {
-            const p1ToPowerup = hasPathToCell(STATE.players.p1.x, STATE.players.p1.y, p.x, p.y);
-            const p2ToPowerup = hasPathToCell(STATE.players.p2.x, STATE.players.p2.y, p.x, p.y);
-
-            // If NEITHER player can reach the powerup, it's considered blocked.
-            if (!p1ToPowerup && !p2ToPowerup) {
-                powerupsBlocked = true;
-                break;
-            }
-        }
-    }
-
-    STATE.walls.pop();
-
-    if (!p1CanReach || !p2CanReach) {
-        showToast("Yolu tamamen kapatamazsın!", "error");
-        return;
-    }
-    if (powerupsBlocked) {
-        showToast("Özelliklerin önü tamamen kapatılamaz!", "error");
-        return;
-    }
-
-    // Send
-    sendMove({ type: 'wall', x, y, orientation: STATE.wallOrientation });
+    sendMove({ type: 'wall', x, y, orientation });
     sounds.play('wall_place');
-    setMode('move');
-}
-
-function hasPath(sx, sy, targetY) {
-    const visited = new Set();
-    const queue = [{ x: sx, y: sy }];
-    visited.add(`${sx},${sy}`);
-    // Standard orthogonal neighbors
-    const dirs = [[0, 1], [0, -1], [1, 0], [-1, 0]];
-
-    while (queue.length > 0) {
-        const curr = queue.shift();
-        if (curr.y === targetY) return true;
-
-        for (const d of dirs) {
-            const nx = curr.x + d[0];
-            const ny = curr.y + d[1];
-            if (nx >= 0 && nx < GRID_COLS && ny >= 0 && ny < GRID_ROWS) {
-                if (!visited.has(`${nx},${ny}`) && !isBlockedByWall(curr.x, curr.y, nx, ny)) {
-                    visited.add(`${nx},${ny}`);
-                    queue.push({ x: nx, y: ny });
-                }
-            }
-        }
-    }
-    return false;
-}
-
-function hasPathToCell(sx, sy, tx, ty) {
-    // Quick check: if start == target
-    if (sx === tx && sy === ty) return true;
-
-    const visited = new Set();
-    const queue = [{ x: sx, y: sy }];
-    visited.add(`${sx},${sy}`);
-    // Standard orthogonal neighbors
-    const dirs = [[0, 1], [0, -1], [1, 0], [-1, 0]];
-
-    while (queue.length > 0) {
-        const curr = queue.shift();
-        if (curr.x === tx && curr.y === ty) return true;
-
-        for (const d of dirs) {
-            const nx = curr.x + d[0];
-            const ny = curr.y + d[1];
-            if (nx >= 0 && nx < GRID_COLS && ny >= 0 && ny < GRID_ROWS) {
-                if (!visited.has(`${nx},${ny}`) && !isBlockedByWall(curr.x, curr.y, nx, ny)) {
-                    visited.add(`${nx},${ny}`);
-                    queue.push({ x: nx, y: ny });
-                }
-            }
-        }
-    }
-    return false;
+    buzz(18);
+    return true;
 }
 
 // Tahtanın ai.js kural yardımcılarının beklediği biçimde kopyası.
@@ -1381,6 +1301,8 @@ function startGame(data) {
     STATE.powerupUsage = {};
     STATE.timeRemaining = { p1: 90, p2: 90 };
     STATE.usedPowerupsInTurn = new Set();
+    STATE.wallHintShown = false;
+    STATE.drag = null;
 
     showScreen('game');
     document.getElementById('p1-name').textContent = (data.p1 || 'P1').split(' ')[0];
@@ -1749,6 +1671,13 @@ function updateTurnUI(turn) {
     }
 
     updateWallCounts();
+
+    // İlk sıra sende geldiğinde duvarların nasıl konduğunu bir kez hatırlat
+    if (STATE.isMyTurn && !STATE.wallHintShown) {
+        STATE.wallHintShown = true;
+        showToast('🧱 Duvar koymak için "Dikey" ya da "Yatay" butonunu tahtaya sürükle.');
+    }
+
     scheduleRender();
 }
 

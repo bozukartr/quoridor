@@ -136,10 +136,11 @@ export function getValidMoves(state, pid) {
     return moves;
 }
 
-// script.js'teki tryPlaceWall doğrulamasının birebir karşılığı.
-export function isWallLegal(state, x, y, orientation) {
+// Duvar konulamıyorsa nedenini döndürür, konulabiliyorsa null.
+// Oyunun tek doğrulama kaynağı: hem oyuncunun hamlesi hem yapay zeka bunu kullanır.
+export function wallInvalidReason(state, x, y, orientation) {
     const { cols, rows, walls, powerups, players } = state;
-    if (x < 0 || x > cols - 2 || y < 0 || y > rows - 2) return false;
+    if (x < 0 || x > cols - 2 || y < 0 || y > rows - 2) return 'out-of-board';
 
     const overlap = walls.some(w => {
         if (w.x === x && w.y === y && w.type === orientation) return true;
@@ -152,19 +153,23 @@ export function isWallLegal(state, x, y, orientation) {
         }
         return false;
     });
-    if (overlap) return false;
+    if (overlap) return 'overlap';
 
     const probe = { ...state, walls: [...walls, { x, y, type: orientation }] };
-    if (distanceToGoal(probe, players.p1.x, players.p1.y, rows - 1) === Infinity) return false;
-    if (distanceToGoal(probe, players.p2.x, players.p2.y, 0) === Infinity) return false;
+    if (distanceToGoal(probe, players.p1.x, players.p1.y, rows - 1) === Infinity) return 'blocks-path';
+    if (distanceToGoal(probe, players.p2.x, players.p2.y, 0) === Infinity) return 'blocks-path';
 
     // Güçlendirmelerin önü tamamen kapatılamaz (oyunun kendi kuralı).
     for (const p of (powerups || [])) {
         const p1Reach = canReachCell(probe, players.p1.x, players.p1.y, p.x, p.y);
         const p2Reach = canReachCell(probe, players.p2.x, players.p2.y, p.x, p.y);
-        if (!p1Reach && !p2Reach) return false;
+        if (!p1Reach && !p2Reach) return 'blocks-powerup';
     }
-    return true;
+    return null;
+}
+
+export function isWallLegal(state, x, y, orientation) {
+    return wallInvalidReason(state, x, y, orientation) === null;
 }
 
 // --- Karar mantığı ---

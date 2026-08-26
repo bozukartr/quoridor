@@ -633,6 +633,8 @@ header {
 .controls {
     margin-bottom: 0;
     display: flex;
+    align-items: stretch;
+    gap: 8px;
     background: var(--bg-secondary);
     padding: 8px;
     border-radius: var(--radius-lg);
@@ -642,6 +644,106 @@ header {
     width: 90%;
     max-width: 400px;
     flex-shrink: 0;
+}
+
+/* ============================================
+   DUVAR SÜRÜKLEME KONTROLLERİ
+   ============================================ */
+.wall-drag-btn {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 56px;
+    padding: 8px 6px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--bg-elevated);
+    color: var(--text-secondary);
+    font-family: inherit;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: grab;
+    /* Sürükleme sırasında sayfa kaydırma/uzun basma menüsü devreye girmesin */
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    transition: background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+}
+
+.wall-drag-btn:active,
+.wall-drag-btn.dragging {
+    background: rgba(91, 124, 255, 0.18);
+    border-color: var(--primary);
+    color: var(--text-primary);
+    cursor: grabbing;
+}
+
+.wall-drag-btn.disabled {
+    opacity: 0.4;
+}
+
+/* Butonun üzerindeki küçük duvar simgesi yönü anlatır */
+.wall-glyph {
+    display: block;
+    border-radius: 2px;
+    background: currentColor;
+    opacity: 0.85;
+}
+
+.wall-glyph.vertical {
+    width: 4px;
+    height: 22px;
+}
+
+.wall-glyph.horizontal {
+    width: 22px;
+    height: 4px;
+}
+
+.wall-drag-btn.dragging .wall-glyph {
+    background: var(--primary);
+}
+
+/* İki butonun arasındaki kalan duvar sayacı */
+.wall-count {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-width: 58px;
+    padding: 6px 8px;
+    border-radius: var(--radius-md);
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    line-height: 1.1;
+}
+
+#wall-count-value {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.wall-count-label {
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+}
+
+.wall-count.empty #wall-count-value {
+    color: #ef4444;
+}
+
+/* Duvar kırıcı da sürüklenerek kullanılır */
+.inventory-btn.dragging {
+    background: rgba(239, 68, 68, 0.2);
+    border-color: #ef4444;
 }
 
 .action-btn {
@@ -922,6 +1024,11 @@ header {
     height: 44px;
     border-radius: 10px;
     flex-shrink: 0;
+    /* Duvar kırıcı tahtaya sürüklendiği için tarayıcı bunu kaydırma sanmamalı */
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
     background: rgba(255, 255, 255, 0.1);
     border: 1px solid rgba(255, 255, 255, 0.2);
     color: white;
