@@ -4,7 +4,7 @@ import { ref, set, onValue, update, push, child, get, remove } from "https://www
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { GameRenderer } from "./game-renderer.js";
 import { LocalRoom } from "./local-room.js";
-import { POWERUP_INFO, INVENTORY_TYPES, powerupLabel, powerupCssColor, powerupRgba } from "./powerups.js";
+import { POWERUP_INFO, INVENTORY_TYPES, powerupLabel, powerupCssColor, powerupRgba, powerupIconClass, refreshPowerupGlyphs, fontAwesomeAvailable } from "./powerups.js";
 import { chooseAiAction, aiThinkDelay, AI_LEVELS, getValidMoves as aiValidMoves, distanceToGoal, goalRowFor, wallInvalidReason } from "./ai.js";
 
 // Game State Constants
@@ -136,7 +136,7 @@ function paintInventoryButtons() {
         const btn = document.getElementById(`btn-${type}`);
         if (!btn) return;
         const icon = btn.querySelector('.pu-icon');
-        if (icon) icon.textContent = POWERUP_INFO[type].emoji;
+        if (icon) icon.className = `pu-icon ${powerupIconClass(type)}`;
         btn.style.setProperty('--pu-color', powerupCssColor(type));
         btn.style.setProperty('--pu-glow', powerupRgba(type, 0.45));
         btn.title = powerupLabel(type);
@@ -145,6 +145,23 @@ function paintInventoryButtons() {
 
 function setupEventListeners() {
     paintInventoryButtons();
+
+    // Font Awesome CDN'den sonradan gelebilir; tahtadaki ikonlar da onu
+    // kullandığı için font hazır olunca glif önbelleğini tazeleyip yeniden çiz.
+    if (document.fonts && document.fonts.ready) {
+        document.fonts.ready.then(() => {
+            refreshPowerupGlyphs();
+            // Font hiç gelmediyse (çevrimdışı) envanterde de emojiye düş; tahta
+            // zaten öyle çiziyor, ikisi yine aynı görünsün.
+            if (!fontAwesomeAvailable()) {
+                INVENTORY_TYPES.forEach(type => {
+                    const icon = document.querySelector(`#btn-${type} .pu-icon`);
+                    if (icon) icon.textContent = POWERUP_INFO[type].emoji;
+                });
+            }
+            scheduleRender();
+        });
+    }
     // Buttons
     document.getElementById('create-room-btn').addEventListener('click', createRoom);
     document.getElementById('join-room-btn').addEventListener('click', joinRoom);
@@ -1725,9 +1742,9 @@ function closeModal() {
 
 // --- TUTORIAL LOGIC ---
 
-// Rehberdeki güçlendirme simgeleri de tahtadakiyle aynı kaynaktan gelir
+// Rehberdeki güçlendirme ikonları da tahtadakiyle aynı kaynaktan gelir
 const puIcon = (type, extraClass = '') =>
-    `<span class="pu-glyph ${extraClass}">${POWERUP_INFO[type].emoji}</span>`;
+    `<i class="${powerupIconClass(type)} ${extraClass}"></i>`;
 
 const TUTORIAL_CONTENT = {
     goal: {
