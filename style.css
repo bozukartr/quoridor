@@ -52,9 +52,15 @@ body {
     width: 100%;
     height: 100%;
     justify-content: center;
+    /* İçerik sığmazsa ortalama üstten kırpar; "safe center" bu durumda başa
+       hizalar ve ekran kaydırılabilir olur (oyun ekranı hariç — o overflow:hidden). */
+    justify-content: safe center;
+    overflow-y: auto;
     position: absolute;
     top: 0;
     left: 0;
+    /* Çentik / gezinme çubuğu alanına taşma (viewport-fit=cover ile birlikte) */
+    padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
     background: linear-gradient(135deg, #0a0e1a 0%, #141824 100%);
 }
 
@@ -398,7 +404,13 @@ body {
     justify-content: flex-start;
     align-items: center;
     gap: 4px;
-    padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px);
+    /* Alt sırada (güçlendirmeler) her zaman biraz pay kalsın; cihazda güvenli
+       alan varsa ona uy, yoksa da ekranın en dibine yapışmasın. */
+    padding:
+        env(safe-area-inset-top, 0px)
+        env(safe-area-inset-right, 0px)
+        max(env(safe-area-inset-bottom, 0px), 6px)
+        env(safe-area-inset-left, 0px);
     height: 100dvh;
     width: 100vw;
     position: relative;
