@@ -4,6 +4,7 @@ import { ref, set, onValue, update, push, child, get, remove } from "https://www
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { GameRenderer } from "./game-renderer.js";
 import { LocalRoom } from "./local-room.js";
+import { POWERUP_INFO, INVENTORY_TYPES, powerupLabel, powerupCssColor, powerupRgba } from "./powerups.js";
 import { chooseAiAction, aiThinkDelay, AI_LEVELS, getValidMoves as aiValidMoves, distanceToGoal, goalRowFor, wallInvalidReason } from "./ai.js";
 
 // Game State Constants
@@ -129,7 +130,21 @@ function init() {
     });
 }
 
+// Envanter düğmelerinin simgesini ve rengini tahtadakiyle aynı kaynaktan doldurur.
+function paintInventoryButtons() {
+    INVENTORY_TYPES.forEach(type => {
+        const btn = document.getElementById(`btn-${type}`);
+        if (!btn) return;
+        const icon = btn.querySelector('.pu-icon');
+        if (icon) icon.textContent = POWERUP_INFO[type].emoji;
+        btn.style.setProperty('--pu-color', powerupCssColor(type));
+        btn.style.setProperty('--pu-glow', powerupRgba(type, 0.45));
+        btn.title = powerupLabel(type);
+    });
+}
+
 function setupEventListeners() {
+    paintInventoryButtons();
     // Buttons
     document.getElementById('create-room-btn').addEventListener('click', createRoom);
     document.getElementById('join-room-btn').addEventListener('click', joinRoom);
@@ -475,8 +490,6 @@ function updateWallCounts() {
     });
 }
 
-const POWERUPS = ['destroy', 'ghost', 'freeze', 'wall', 'return', 'chaos', 'double_turn', 'hourglass'];
-
 // --- SOUND MANAGER ---
 class SoundManager {
     constructor() {
@@ -645,20 +658,8 @@ function tryMove(targetX, targetY) {
     if (pIndex !== -1) {
         pickupPowerupIndex = pIndex;
         const p = STATE.powerups[pIndex];
-        const names = {
-            destroy: 'Duvar Kırıcı 💣',
-            ghost: 'Hayalet Modu 👻',
-            freeze: 'Dondurucu ❄️',
-            wall: '+1 Duvar 🧱',
-            return: 'Geri Sar ↩️',
-            chaos: 'Şaşırtma 🔀',
-            double_turn: 'Dejavu 🔁',
-
-            hourglass: 'Kum Saati ⏳',
-            time_bonus: '+10 Saniye ⏱️',
-            star: '🌟 EFSANEVİ YILDIZ 🌟'
-        };
-        const pName = names[p.type] || 'Powerup';
+        const info = POWERUP_INFO[p.type];
+        const pName = info ? `${info.label} ${info.emoji}` : 'Güçlendirme';
 
         if (p.type === 'star') {
             showToast(`🌟 EFSANEVİ! TÜM GÜÇLER EKLENDİ!`, "success");
@@ -1607,8 +1608,7 @@ function updateTurnUI(turn) {
     if (turn === STATE.playerId) sounds.play('turn_start');
 
     if (me && me.inventory) {
-        const types = ['destroy', 'ghost', 'freeze', 'wall', 'return', 'chaos', 'double_turn', 'hourglass'];
-        types.forEach(type => {
+        INVENTORY_TYPES.forEach(type => {
             const count = me.inventory[type] || 0;
             const btn = document.getElementById(`btn-${type}`);
             if (btn) {
@@ -1724,6 +1724,11 @@ function closeModal() {
 }
 
 // --- TUTORIAL LOGIC ---
+
+// Rehberdeki güçlendirme simgeleri de tahtadakiyle aynı kaynaktan gelir
+const puIcon = (type, extraClass = '') =>
+    `<span class="pu-glyph ${extraClass}">${POWERUP_INFO[type].emoji}</span>`;
+
 const TUTORIAL_CONTENT = {
     goal: {
         title: "Oyunun Amacı",
@@ -1746,56 +1751,56 @@ const TUTORIAL_CONTENT = {
     destroy: {
         title: "Duvar Kırıcı",
         desc: "Yolundaki herhangi bir duvarı yok etmeni sağlar.",
-        icon_html: '<i class="fa-solid fa-bomb"></i>',
-        color: '#ef4444'
+        icon_html: puIcon('destroy'),
+        color: powerupCssColor('destroy')
     },
     ghost: {
         title: "Hayalet Modu",
         desc: "Bir sonraki hamlende duvarların içinden geçebilirsin.",
-        icon_html: '<i class="fa-solid fa-ghost"></i>',
-        color: '#a855f7'
+        icon_html: puIcon('ghost'),
+        color: powerupCssColor('ghost')
     },
     freeze: {
         title: "Dondurucu",
         desc: "Rakibin bir sonraki turda duvar koymasını engeller.",
-        icon_html: '<i class="fa-solid fa-snowflake"></i>',
-        color: '#0ea5e9'
+        icon_html: puIcon('freeze'),
+        color: powerupCssColor('freeze')
     },
     wall_plus: {
         title: "+1 Duvar",
         desc: "Envanterine ekstra bir duvar ekler.",
-        icon_html: '<i class="fa-solid fa-plus-square"></i>',
-        color: '#f97316'
+        icon_html: puIcon('wall'),
+        color: powerupCssColor('wall')
     },
     return: {
         title: "Geri Sar",
         desc: "Rakibi başlangıç noktasına geri gönderir.",
-        icon_html: '<i class="fa-solid fa-undo"></i>',
-        color: '#10b981'
+        icon_html: puIcon('return'),
+        color: powerupCssColor('return')
     },
     chaos: {
         title: "Kaos",
         desc: "Rakip bir sonraki hamlesinde rastgele bir yöne hareket eder.",
-        icon_html: '<i class="fa-solid fa-shuffle"></i>',
-        color: '#d946ef'
+        icon_html: puIcon('chaos'),
+        color: powerupCssColor('chaos')
     },
     double_turn: {
         title: "Çift Hamle",
         desc: "Sıra tekrar sana geçer, arka arkaya iki hamle yaparsın.",
-        icon_html: '<i class="fa-solid fa-repeat"></i>',
-        color: '#eab308'
+        icon_html: puIcon('double_turn'),
+        color: powerupCssColor('double_turn')
     },
     hourglass: {
         title: "Kum Saati",
         desc: "Rakibin toplam süresinden 10 saniye siler.",
-        icon_html: '<i class="fa-solid fa-hourglass-half"></i>',
-        color: '#b45309'
+        icon_html: puIcon('hourglass'),
+        color: powerupCssColor('hourglass')
     },
     star: {
         title: "Yıldız Gücü",
         desc: "Çok nadirdir. Alındığında diğer tüm güçlerden birer adet kazandırır.",
-        icon_html: '<i class="fa-solid fa-star tutorial-pulse"></i>',
-        color: '#ffd700'
+        icon_html: puIcon('star', 'tutorial-pulse'),
+        color: powerupCssColor('star')
     }
 };
 
