@@ -113,7 +113,11 @@
             "hdr   board pwr";
         align-items: center;
         gap: 4px;
-        padding: 4px;
+        padding:
+            max(4px, env(safe-area-inset-top, 0px))
+            max(4px, env(safe-area-inset-right, 0px))
+            max(4px, env(safe-area-inset-bottom, 0px))
+            max(4px, env(safe-area-inset-left, 0px));
     }
     #header-controls { grid-area: hctrl; width: 100%; max-width: 100%; margin-top: 0 !important; }
     /* Stacked players so the header fits its narrow column instead of spilling
