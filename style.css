@@ -740,6 +740,17 @@ header {
     color: #ef4444;
 }
 
+/* Dondurucu etkisi altındayken duvar konamaz — sayaç bunu söylüyor */
+.wall-count.frozen {
+    border-color: #0ea5e9;
+    background: rgba(14, 165, 233, 0.12);
+}
+
+.wall-count.frozen #wall-count-value,
+.wall-count.frozen .wall-count-label {
+    color: #38bdf8;
+}
+
 /* Duvar kırıcı da sürüklenerek kullanılır */
 .inventory-btn.dragging {
     background: rgba(239, 68, 68, 0.2);

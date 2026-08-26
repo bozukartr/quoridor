@@ -208,6 +208,18 @@ function setupEventListeners() {
         });
     });
 
+    // Emniyet ağı: pointerup/pointercancel kaynağa ulaşmazsa (yakalama düşmesi,
+    // ekran değişimi, iOS'ta kaybolan olay) sürükleme burada kapanır. Kaynak
+    // düğme olayı normalde önce işler ve STATE.drag'i temizler.
+    ['pointerup', 'pointercancel'].forEach(type => {
+        window.addEventListener(type, (e) => {
+            const drag = STATE.drag;
+            if (!drag) return;
+            if (drag.pointerId !== undefined && e.pointerId !== undefined && drag.pointerId !== e.pointerId) return;
+            endDrag(drag, type === 'pointercancel');
+        });
+    });
+
     // Duvarlar sürüklenerek konur (tahta her zaman hareket modunda)
     bindDragSource(controls.wallV, 'vertical');
     bindDragSource(controls.wallH, 'horizontal');
@@ -415,6 +427,7 @@ function bindDragSource(el, kind) {
             kind, el,
             pointerId: e.pointerId,
             startX: e.clientX, startY: e.clientY,
+            lastEventAt: Date.now(),
             moved: false,
             target: null   // {x,y,orientation,valid} veya kırılacak duvar
         };
@@ -426,6 +439,7 @@ function bindDragSource(el, kind) {
         const drag = STATE.drag;
         if (!drag || drag.pointerId !== e.pointerId) return;
         e.preventDefault();
+        drag.lastEventAt = Date.now();
 
         if (!drag.moved &&
             Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY) > DRAG_MOVE_THRESHOLD) {
@@ -442,6 +456,13 @@ function bindDragSource(el, kind) {
     };
     el.addEventListener('pointerup', finish);
     el.addEventListener('pointercancel', finish);
+
+    // Öğe gizlenir/kaldırılırsa (ör. oyun biterse) yakalama düşer ve pointerup
+    // hiç gelmeyebilir; bu durumda sürüklemeyi burada kapatıyoruz.
+    el.addEventListener('lostpointercapture', (e) => {
+        const drag = STATE.drag;
+        if (drag && drag.pointerId === e.pointerId) cancelDrag();
+    });
 }
 
 // Parmağın konumundan hayaletin oturacağı yuvayı hesaplar ve çizdirir.
@@ -477,10 +498,16 @@ function updateDragGhost(drag, clientX, clientY) {
     renderer.setDragGhost({ kind: 'wall', ...target });
 }
 
-function endDrag(drag, cancelled) {
-    drag.el.classList.remove('dragging');
-    renderer && renderer.setDragGhost(null);
+// Süregelen sürüklemeyi her koşulda temizler (hayalet + düğme durumu + STATE).
+function cancelDrag() {
+    const drag = STATE.drag;
     STATE.drag = null;
+    if (drag && drag.el) drag.el.classList.remove('dragging');
+    if (renderer) renderer.setDragGhost(null);
+}
+
+function endDrag(drag, cancelled) {
+    cancelDrag();
 
     if (cancelled) return;
 
@@ -517,7 +544,17 @@ function updateWallCounts() {
     if (controls.countValue) controls.countValue.textContent = left;
     if (controls.countBox) controls.countBox.classList.toggle('empty', left <= 0);
 
-    const usable = left > 0 && STATE.isMyTurn && STATE.frozenPlayer !== STATE.playerId;
+    // Donmuşken duvar konamaz; bunu sayaçta açıkça göster ki "neden olmuyor"
+    // sorusu kalmasın.
+    const frozen = STATE.frozenPlayer === STATE.playerId;
+    const usable = left > 0 && STATE.isMyTurn && !frozen;
+
+    if (controls.countBox) {
+        controls.countBox.classList.toggle('frozen', frozen);
+        const label = controls.countBox.querySelector('.wall-count-label');
+        if (label) label.textContent = frozen ? 'dondun' : 'duvar';
+    }
+
     [controls.wallV, controls.wallH].forEach(btn => {
         if (btn) btn.classList.toggle('disabled', !usable);
     });
@@ -645,7 +682,14 @@ function generatePowerup(activePowerups = []) {
 // Tahtaya dokunmak her zaman hareket demektir (duvarlar sürüklenerek konur).
 function handleCellClick(cx, cy) {
     if (!STATE.gameActive || !STATE.isMyTurn) return;
-    if (STATE.drag) return; // sürükleme sürerken tahta tıklaması yok
+
+    if (STATE.drag) {
+        // Parmak hâlâ ekrandaysa olaylar akmaya devam eder; bir saniyedir hiç
+        // olay gelmediyse bu, bitişi kaçırılmış takılı bir sürüklemedir —
+        // tahtayı kilitlemek yerine temizleyip dokunuşu işliyoruz.
+        if (Date.now() - (STATE.drag.lastEventAt || 0) < 1000) return;
+        cancelDrag();
+    }
 
     let targetX = cx, targetY = cy;
 
@@ -924,6 +968,7 @@ function stopConfetti() {
 
 function endGame(winnerId) {
     STATE.gameActive = false;
+    cancelDrag();
     stopConfetti();
 
     // Determine Result
@@ -962,6 +1007,7 @@ function endGame(winnerId) {
 function renderBoard() { scheduleRender(); }
 
 function showScreen(name) {
+    cancelDrag(); // ekran değişirken yarım kalan sürükleme tahtayı kilitlemesin
     if (name !== 'gameOver') stopConfetti();
     Object.values(screens).forEach(s => s.classList.remove('active'));
     screens[name].classList.add('active');
@@ -1189,6 +1235,7 @@ function resetRoom() {
         STATE.aiThinking = false;
         if (STATE.aiTimer) { clearTimeout(STATE.aiTimer); STATE.aiTimer = null; }
     }
+    cancelDrag(); // rövanşa temiz başla
 
     roomUpdate({
         turn: Math.random() < 0.5 ? 'p1' : 'p2',
