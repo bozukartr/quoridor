@@ -36,12 +36,28 @@ const STATE = {
 const AI_PID = 'p2'; // Yapay zeka her zaman p2 olarak oynar
 
 // --- ODA ERİŞİMİ (çevrimiçi: Firebase, tek kişilik: yerel oda) ---
+
+// Firebase yazma/okuma hataları şimdiye kadar sessizce yutuluyordu: yazma
+// reddedilse bile oyuncu bekleme ekranını görüyor, karşı taraf ise "oda
+// bulunamadı" diyordu. Sorunun nedeni artık ekranda görünüyor.
+function reportRoomError(action, error) {
+    console.error(`[Firebase] ${action} hatası:`, error);
+    const detail = `${error?.code || ''} ${error?.message || ''}`;
+    if (/permission[_-]denied/i.test(detail)) {
+        showToast(`Sunucu izin vermedi (${action}). Firebase veritabanı kuralları süresi dolmuş olabilir.`, 'error');
+    } else if (/network|offline|unavailable/i.test(detail)) {
+        showToast(`Sunucuya ulaşılamadı (${action}). İnternet bağlantını kontrol et.`, 'error');
+    } else {
+        showToast(`Sunucu hatası (${action}): ${error?.code || error?.message || 'bilinmiyor'}`, 'error');
+    }
+}
 function roomUpdate(updates) {
     if (STATE.vsAI) {
         if (STATE.localRoom) STATE.localRoom.update(updates);
         return;
     }
-    update(ref(db, 'rooms/' + STATE.roomId), updates);
+    update(ref(db, 'rooms/' + STATE.roomId), updates)
+        .catch(e => reportRoomError('hamle gönderme', e));
 }
 
 function roomSubscribe(callback) {
@@ -1199,6 +1215,13 @@ function createRoom(customId = null) {
         turn: Math.random() < 0.5 ? 'p1' : 'p2',
         status: 'waiting',
         boardState: createInitialBoardState()
+    }).catch(e => {
+        // Oda sunucuya yazılamadıysa rakip zaten katılamaz; oyuncuyu bekletme.
+        reportRoomError('oda oluşturma', e);
+        if (STATE.roomUnsubscribe) { STATE.roomUnsubscribe(); STATE.roomUnsubscribe = null; }
+        STATE.roomId = null;
+        STATE.playerId = null;
+        showScreen('start');
     });
 
     STATE.roomId = roomId;
@@ -1230,7 +1253,7 @@ function joinRoom(retryCount = 0) {
                 update(roomRef, {
                     p2: username,
                     status: 'active'
-                });
+                }).catch(e => reportRoomError('odaya katılma', e));
                 STATE.roomId = roomId;
                 STATE.playerId = 'p2';
                 listenGameLoop();
@@ -1246,9 +1269,7 @@ function joinRoom(retryCount = 0) {
                 showToast("Oda bulunamadı! Kodu kontrol et.", "error");
             }
         }
-    }).catch(e => {
-        console.error("Join Error:", e);
-    });
+    }).catch(e => reportRoomError('oda arama', e));
 }
 
 
