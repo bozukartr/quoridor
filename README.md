@@ -28,7 +28,7 @@ npm run ios
 
 - `android/`: Android Studio projesi. Uyumlu Android SDK/JDK kurulumu gerekir.
 - `ios/`: Xcode projesi (Swift Package Manager). Derleme ve imzalama macOS/Xcode gerektirir.
-- Geçici uygulama kimliği: `com.burakgol.quoridor`. Mağaza kaydı ve imzalamadan önce kesinleştirin.
+- Firebase Android/iOS uygulama kimliği: `com.burakgol.quoridor`. Mağaza ve imzalama kayıtlarında aynı kimliği kullanın.
 - Simge/açılış ekranları şu an Capacitor şablonudur; yayın tasarımları değildir.
 - `dist/` ve platformlara kopyalanan web çıktıları sürüm kontrolünde tutulmaz. Her kaynak değişikliğinden sonra `npm run cap:sync` çalıştırın.
 
@@ -46,7 +46,7 @@ Bu dal bir mobil temel oluşturur; mağaza yayınına hazır sürüm değildir.
 
 - Sunucuda yetkili hamle/süre doğrulaması. Bu aşamada istemciler Firebase zaman referansını kullanır; backend hakemliği henüz yoktur.
 - Oyuncu kimlikleri, sunucuda hamle/sonuç doğrulaması ve gözden geçirilmiş Firebase kuralları. Transaction kullanımı güvenlik doğrulamasının yerini tutmaz; oda kökünde gerekli okuma/yazma izinleri canlı ortamda doğrulanmalıdır.
-- Native Google girişinin gerçek Firebase platform dosyaları ve OAuth ayarlarıyla etkinleştirilmesi; iOS için giriş seçeneklerinin değerlendirilmesi.
+- Android imzalama sertifikalarının Firebase SHA-1 kayıtları, native Google girişinin cihaz testleri; iOS için giriş seçeneklerinin değerlendirilmesi.
 - Hesap silme, gizlilik metinleri, mağaza varlıkları ve native dokunsal geri bildirim.
 - Fiziksel cihaz testleri, imzalı AAB/iOS arşivi ve mağaza başvuruları.
 
@@ -60,13 +60,14 @@ Bağlantı yokken yeni çevrimiçi hamleler engellenir. `localStorage` içinde 2
 
 Web Google girişi popup kullanmaya devam eder. Native akış `@capacitor-firebase/authentication` ile alınan Google credential'ını Firebase JS oturumuna aktarır; `skipNativeAuth: true` ayarlıdır.
 
-**Şu an native Google girişi etkin değildir.** `includePlugins` listesinde sadece `@capacitor/app` vardır. Firebase platform dosyaları yokken auth eklentisinin iOS başlangıcında `FirebaseApp.configure()` çağırıp uygulamayı kapatmasını önlemek için auth eklentisi native projeye henüz bağlanmaz. Kullanıcı yine AI/oda akışını kullanabilir.
+Firebase `quoridor-7a872` projesinde Android ve iOS uygulamaları `com.burakgol.quoridor` kimliğiyle kayıtlıdır. Google sağlayıcısının etkin olduğu konsolda doğrulandı. Gerçek `android/app/google-services.json` ve `ios/App/App/GoogleService-Info.plist` dosyaları projeye eklenmiştir. Bunlar uygulamayla dağıtılan istemci ayarlarıdır; yönetici/service-account anahtarı içermezler.
 
-Etkinleştirme için:
+Auth eklentisi `includePlugins` listesinde etkindir. iOS plist'i App hedefinin Resources bölümüne, gerçek `REVERSED_CLIENT_ID` URL scheme'i Info.plist'e eklenmiştir. Google Android bağımlılık seçimi, iOS Google-only SwiftPM ayarları ve URL callback köprüsü hazırdır. Xcode 16.3+ / Swift 6.1+ gerekir.
 
-1. Firebase projesinde `com.burakgol.quoridor` kimliğiyle Android ve iOS uygulamalarını kaydedin. Android için `android/app/google-services.json`, iOS için `ios/App/App/GoogleService-Info.plist` dosyalarını sağlayın. iOS plist'ini Xcode App hedefine kaynak olarak ekleyin.
-2. Google sağlayıcısını açın; Android debug/release/Play App Signing SHA-1 parmak izlerini Firebase'e ekleyin. iOS plist'indeki `REVERSED_CLIENT_ID` değerini Xcode URL Types alanına ekleyin. Bu değerler bu repoda uydurulmaz.
-3. `capacitor.config.json` içindeki `includePlugins` listesine `@capacitor-firebase/authentication` ekleyin; `npm run cap:sync` çalıştırın. Google Android bağımlılık seçimi, iOS Google-only SwiftPM ayarları ve URL callback köprüsü hazırlanmıştır. Xcode 16.3+ / Swift 6.1+ gerekir.
-4. Her iki platformda gerçek cihaz girişi, iptal, çıkış ve uygulama yeniden açılışında oturum kalıcılığını doğrulayın.
+Kalan doğrulama:
+
+1. Gerçekte kullanılacak Android debug/release/Play App Signing sertifikalarının SHA-1 parmak izlerini Firebase proje ayarları → Quoridor Android bölümüne ekleyin. Henüz hiçbir Android sertifika parmak izi kaydedilmedi; mevcut yapılandırma yalnızca web OAuth istemcisini içerir. Bu adım olmadan Android Google girişi tamamlanmış sayılmaz.
+2. Parmak izlerini ekledikten sonra güncel `google-services.json` dosyasını indirip `android/app/` altındaki dosyayı değiştirin; `npm run cap:sync` çalıştırın.
+3. Her iki platformda gerçek cihaz girişi, iptal, çıkış ve uygulama yeniden açılışında oturum kalıcılığını doğrulayın. Web derleme ve Capacitor sync kontrolleri native derleme/OAuth testinin yerini tutmaz.
 
 İlgili kaynaklar: [Firebase saat/bağlantı](https://firebase.google.com/docs/database/web/offline-capabilities), [Google native kurulum](https://github.com/capawesome-team/capacitor-firebase/blob/main/packages/authentication/docs/setup-google.md).
