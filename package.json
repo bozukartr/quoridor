@@ -1,0 +1,31 @@
+{
+  "name": "quoridor-mobile",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "test": "node --test tests/*.test.js",
+    "cap:sync": "npm run build && cap sync",
+    "android": "cap open android",
+    "ios": "cap open ios"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.5.2",
+    "@capacitor/core": "8.5.2",
+    "@capacitor/ios": "8.5.2",
+    "@fontsource/outfit": "5.3.0",
+    "@fortawesome/fontawesome-free": "6.4.0",
+    "firebase": "10.7.1",
+    "pixi.js": "7.4.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.5.2",
+    "vite": "8.3.0"
+  }
+}

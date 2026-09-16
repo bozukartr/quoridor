@@ -1,7 +1,8 @@
+import { resetMatchState, claimSecondPlayer, rematchRoom } from "./match-session.js";
 // Import Shared Firebase Config
 import { app, db, auth } from "./firebase-config.js";
-import { ref, set, onValue, update, push, child, get, remove } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
-import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import { ref, set, onValue, update, push, child, get, remove, runTransaction } from "firebase/database";
+import { onAuthStateChanged } from "firebase/auth";
 import { GameRenderer } from "./game-renderer.js";
 import { LocalRoom } from "./local-room.js";
 import { POWERUP_INFO, INVENTORY_TYPES, powerupLabel, powerupCssColor, powerupRgba, powerupIconClass, refreshPowerupGlyphs, fontAwesomeAvailable } from "./powerups.js";
@@ -180,7 +181,7 @@ function setupEventListeners() {
     }
     // Buttons
     document.getElementById('create-room-btn').addEventListener('click', createRoom);
-    document.getElementById('join-room-btn').addEventListener('click', joinRoom);
+    document.getElementById('join-room-btn').addEventListener('click', () => joinRoom());
 
     // Tek kişilik mod: zorluk seçimi + başlat
     document.querySelectorAll('#ai-difficulty .diff-btn').forEach(btn => {
@@ -1016,6 +1017,10 @@ function showScreen(name) {
 // --- TEK KİŞİLİK MOD (YAPAY ZEKA) ---
 
 function startAIGame(level) {
+    if (roomRequestPending) {
+        showToast('Oda işlemi tamamlanıyor, lütfen bekle.');
+        return;
+    }
     const username = document.getElementById('username-input').value || 'Sen';
     const aiLevel = AI_LEVELS[level] ? level : 'medium';
 
@@ -1032,6 +1037,7 @@ function startAIGame(level) {
     STATE.gameActive = false;
 
     const data = {
+        matchId: crypto.randomUUID(),
         p1: username,
         p2: `Bot (${AI_LEVELS[aiLevel].label})`,
         turn: Math.random() < 0.5 ? 'p1' : 'p2',
@@ -1222,103 +1228,114 @@ function createInitialBoardState() {
     };
 }
 
-function resetRoom() {
-    if (!STATE.roomId) return;
+let roomRequestPending = false;
 
-    // Reset to initial state
-    const initialState = {
-        ...createInitialBoardState(),
-        winner: null // Explicitly clear winner for rematch
-    };
-
-    if (STATE.vsAI) {
-        STATE.aiThinking = false;
-        if (STATE.aiTimer) { clearTimeout(STATE.aiTimer); STATE.aiTimer = null; }
-    }
-    cancelDrag(); // rövanşa temiz başla
-
-    roomUpdate({
-        turn: Math.random() < 0.5 ? 'p1' : 'p2',
-        status: 'active', // Ensure status is active
-        boardState: initialState
-    });
-
-    // Explicitly clear winner if it was set at root or in boardState
-    // initialState above clears boardState.winner, but let's be safe about root status.
-
-    showScreen('game');
-}
-
-function createRoom(customId = null) {
-    STATE.vsAI = false; // Çevrimiçi moda dönüş
-    // Ensure customId is a string (and not an Event object from click listeners)
-    const validCustomId = (typeof customId === 'string') ? customId : null;
-    const roomId = validCustomId || Math.random().toString(36).substring(2, 6).toUpperCase();
-    const username = document.getElementById('username-input').value || 'P1';
-
-    const roomRef = ref(db, 'rooms/' + roomId);
-    set(roomRef, {
-        p1: username,
-        turn: Math.random() < 0.5 ? 'p1' : 'p2',
-        status: 'waiting',
-        boardState: createInitialBoardState()
-    }).catch(e => {
-        // Oda sunucuya yazılamadıysa rakip zaten katılamaz; oyuncuyu bekletme.
-        reportRoomError('oda oluşturma', e);
-        if (STATE.roomUnsubscribe) { STATE.roomUnsubscribe(); STATE.roomUnsubscribe = null; }
-        STATE.roomId = null;
-        STATE.playerId = null;
-        showScreen('start');
-    });
-
-    STATE.roomId = roomId;
-    STATE.playerId = 'p1';
-
-    showScreen('waiting');
-    document.getElementById('display-room-code').textContent = roomId;
-
-    STATE.roomUnsubscribe = onValue(roomRef, (snapshot) => {
-        const data = snapshot.val();
-        if (data && data.p2) {
-            startGame(data);
-        }
-    });
-}
-
-function joinRoom(retryCount = 0) {
-    STATE.vsAI = false; // Çevrimiçi moda dönüş
-    const roomId = document.getElementById('room-code-input').value.toUpperCase();
-    const username = document.getElementById('username-input').value || 'P2';
-
-    if (!roomId) return;
-
-    const roomRef = ref(db, 'rooms/' + roomId);
-    get(roomRef).then((snapshot) => {
-        if (snapshot.exists()) {
-            const data = snapshot.val();
-            if (!data.p2) {
-                update(roomRef, {
-                    p2: username,
-                    status: 'active'
-                }).catch(e => reportRoomError('odaya katılma', e));
-                STATE.roomId = roomId;
-                STATE.playerId = 'p2';
-                listenGameLoop();
-            } else {
-                showToast("Bu oda dolu!", "error");
-            }
+async function resetRoom() {
+    if (!STATE.roomId || roomRequestPending) return;
+    roomRequestPending = true;
+    const expectedMatchId = STATE.matchId ?? null;
+    const newMatchId = crypto.randomUUID();
+    const board = createInitialBoardState();
+    const turn = Math.random() < 0.5 ? 'p1' : 'p2';
+    try {
+        if (STATE.vsAI) {
+            const next = rematchRoom(STATE.localRoom.val(), expectedMatchId, newMatchId, board, turn);
+            if (next) STATE.localRoom.set(next);
         } else {
-            // Retry Mechanism for Invites
-            if (retryCount < 5) {
-                showToast(`Oda aranıyor... (${retryCount + 1})`);
-                setTimeout(() => joinRoom(retryCount + 1), 1000);
-            } else {
-                showToast("Oda bulunamadı! Kodu kontrol et.", "error");
-            }
+            await runTransaction(ref(db, 'rooms/' + STATE.roomId),
+                room => rematchRoom(room, expectedMatchId, newMatchId, board, turn),
+                { applyLocally: false });
         }
-    }).catch(e => reportRoomError('oda arama', e));
+        // Only the confirmed snapshot starts the new match on both clients.
+    } catch (error) {
+        reportRoomError('rövanş başlatma', error);
+    } finally {
+        roomRequestPending = false;
+    }
 }
 
+async function createRoom(customId = null) {
+    if (roomRequestPending) return;
+    roomRequestPending = true;
+    const validCustomId = typeof customId === 'string' ? customId : null;
+    const username = document.getElementById('username-input').value || 'P1';
+    try {
+        for (let attempt = 0; attempt < 5; attempt++) {
+            const roomId = validCustomId || Math.random().toString(36).substring(2, 6).toUpperCase();
+            const roomRef = ref(db, 'rooms/' + roomId);
+            const initial = {
+                matchId: crypto.randomUUID(),
+                p1: username,
+                turn: Math.random() < 0.5 ? 'p1' : 'p2',
+                status: 'waiting',
+                boardState: createInitialBoardState()
+            };
+            const result = await runTransaction(roomRef,
+                current => current === null ? initial : undefined,
+                { applyLocally: false });
+            if (!result.committed) {
+                if (!validCustomId) continue;
+                showToast('Bu oda kodu zaten kullanılıyor.', 'error');
+                return;
+            }
+            STATE.vsAI = false;
+            STATE.roomId = roomId;
+            STATE.playerId = 'p1';
+            showScreen('waiting');
+            document.getElementById('display-room-code').textContent = roomId;
+            if (STATE.roomUnsubscribe) STATE.roomUnsubscribe();
+            STATE.roomUnsubscribe = onValue(roomRef, snapshot => {
+                const data = snapshot.val();
+                if (data && data.p2) startGame(data);
+            }, error => reportRoomError('oda dinleme', error));
+            return;
+        }
+        showToast('Oda kodu oluşturulamadı. Tekrar dene.', 'error');
+    } catch (error) {
+        reportRoomError('oda oluşturma', error);
+    } finally {
+        roomRequestPending = false;
+    }
+}
+
+async function joinRoom() {
+    if (roomRequestPending) return;
+    const roomId = document.getElementById('room-code-input').value.trim().toUpperCase();
+    const username = document.getElementById('username-input').value || 'P2';
+    if (!/^[A-Z0-9]{4,6}$/.test(roomId)) {
+        showToast('Geçerli bir oda kodu gir.', 'error');
+        return;
+    }
+    roomRequestPending = true;
+    try {
+        const roomRef = ref(db, 'rooms/' + roomId);
+        // Invitations may arrive just before the host creates the room.
+        let exists = false;
+        for (let attempt = 0; attempt < 6; attempt++) {
+            exists = (await get(roomRef)).exists();
+            if (exists) break;
+            if (attempt < 5) await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+        if (!exists) {
+            showToast('Oda bulunamadı! Kodu kontrol et.', 'error');
+            return;
+        }
+        const result = await runTransaction(roomRef,
+            room => claimSecondPlayer(room, username), { applyLocally: false });
+        if (!result.committed || !result.snapshot.val()) {
+            showToast('Bu oda dolu veya artık katılıma açık değil.', 'error');
+            return;
+        }
+        STATE.vsAI = false;
+        STATE.roomId = roomId;
+        STATE.playerId = 'p2';
+        startGame(result.snapshot.val());
+    } catch (error) {
+        reportRoomError('odaya katılma', error);
+    } finally {
+        roomRequestPending = false;
+    }
+}
 
 
 function updateHeader() {
@@ -1378,17 +1395,14 @@ function startGame(data) {
         STATE.roomUnsubscribe();
         STATE.roomUnsubscribe = null;
     }
+    stopTurnTimer();
+    if (STATE.aiTimer) clearTimeout(STATE.aiTimer);
+    if (STATE._hourglassTimer) clearInterval(STATE._hourglassTimer);
+    STATE.aiTimer = null;
+    STATE._hourglassTimer = null;
+    cancelDrag();
+    resetMatchState(STATE, data);
     STATE.gameActive = true;
-    STATE.statsRecorded = false;
-    STATE.ghostMode = false;
-    STATE.startTime = Date.now();
-    STATE.moveCount = 0;
-    STATE.powerupCount = 0;
-    STATE.powerupUsage = {};
-    STATE.timeRemaining = { p1: 90, p2: 90 };
-    STATE.usedPowerupsInTurn = new Set();
-    STATE.wallHintShown = false;
-    STATE.drag = null;
 
     showScreen('game');
     document.getElementById('p1-name').textContent = (data.p1 || 'P1').split(' ')[0];
@@ -1423,6 +1437,12 @@ function listenGameLoop() {
         const data = snapshot.val();
         if (!data) return;
 
+        if (data.status === 'active' &&
+            (!STATE.gameActive || (data.matchId ?? null) !== STATE.matchId)) {
+            startGame(data);
+            return;
+        }
+
         // Sync State
         if (data.boardState) {
             STATE.players.p1 = data.boardState.p1 || STATE.players.p1;
@@ -1435,9 +1455,7 @@ function listenGameLoop() {
             }
             STATE.powerups = newPowerups;
 
-            if (data.boardState.activeEffects) {
-                STATE.activeEffects = data.boardState.activeEffects;
-            }
+            STATE.activeEffects = data.boardState.activeEffects || { p1: {}, p2: {} };
 
             // Sync Timers
             if (data.boardState.timeRemaining) {
@@ -1477,7 +1495,8 @@ function listenGameLoop() {
 
                     updateUserStats(auth.currentUser.uid, isWin, opponentName, extraStats);
                 }
-                endGame(data.boardState.winner);
+                if (STATE.gameActive) endGame(data.boardState.winner);
+                return;
             }
 
             // Migration/Safety: Ensure wallsV/wallsH exist
@@ -1489,17 +1508,6 @@ function listenGameLoop() {
 
             STATE.walls = data.boardState.walls || [];
             STATE.frozenPlayer = data.boardState.frozenPlayer || null;
-        }
-
-        if (data.status === 'active') {
-            if (!STATE.gameActive && document.getElementById('game-over-screen').classList.contains('active')) {
-                if (STATE.walls.length === 0) {
-                    STATE.gameActive = true;
-                    showScreen('game');
-                }
-            } else if (!STATE.gameActive) {
-                startGame(data);
-            }
         }
 
         if (STATE.gameActive) {

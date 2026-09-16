@@ -1,5 +1,5 @@
 // game-renderer.js — WebGL Board Renderer (PixiJS)
-// Requires window.PIXI from PixiJS CDN
+import * as PIXI from 'pixi.js';
 
 import { powerupGlyph, powerupColor } from "./powerups.js";
 

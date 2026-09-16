@@ -1,0 +1,6 @@
+{
+  "appId": "com.burakgol.quoridor",
+  "appName": "Quoridor",
+  "webDir": "dist",
+  "backgroundColor": "#0f172a"
+}

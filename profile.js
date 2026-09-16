@@ -1,6 +1,6 @@
 import { auth, provider, db } from "./firebase-config.js";
-import { signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-import { ref, onValue, get, set, update, child, onDisconnect } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
+import { ref, onValue, get, set, update, child, onDisconnect } from "firebase/database";
 
 // DOM Elements
 const authBtn = document.getElementById('auth-btn');
