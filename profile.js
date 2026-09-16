@@ -1,6 +1,7 @@
+import { signInWithGoogle, signOutUser } from "./auth-service.js";
 import { auth, provider, db } from "./firebase-config.js";
-import { signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-import { ref, onValue, get, set, update, child, onDisconnect } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+import { onAuthStateChanged } from "firebase/auth";
+import { ref, onValue, get, set, update, child, onDisconnect } from "firebase/database";
 
 // DOM Elements
 const authBtn = document.getElementById('auth-btn');
@@ -19,7 +20,7 @@ if (authBtn) {
     authBtn.onclick = () => {
         console.log("Auth Button Clicked. Current User:", auth.currentUser);
         if (auth.currentUser) {
-            signOut(auth).then(() => {
+            signOutUser().then(() => {
                 alert("Çıkış yapıldı.");
                 // onAuthStateChanged will handle UI
             }).catch((error) => {
@@ -27,7 +28,7 @@ if (authBtn) {
             });
         } else {
             console.log("Attempting Sign In...");
-            signInWithPopup(auth, provider).then((result) => {
+            signInWithGoogle().then((result) => {
                 console.log("Sign In Success:", result.user);
             }).catch((error) => {
                 console.error("Sign In Error", error);
