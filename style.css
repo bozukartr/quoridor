@@ -1743,3 +1743,9 @@ header {
         min-width: auto;
     }
 }
+#connection-status:not([hidden]) {
+    position: fixed; top: max(env(safe-area-inset-top), 8px); left: 50%;
+    transform: translateX(-50%); z-index: 10000; width: max-content; max-width: 90%;
+    padding: 10px 16px; border-radius: 12px; background: #78350f; color: #fff;
+    font-size: 13px; text-align: center; pointer-events: none;
+}

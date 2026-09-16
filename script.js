@@ -1,7 +1,9 @@
+import { remainingMs, startClock, commitTimedMove, finishTimeout, saveSession, readSession, clearSession, canResumeRoom } from "./online-match.js";
+import { onAppResume } from "./native-lifecycle.js";
 import { resetMatchState, claimSecondPlayer, rematchRoom } from "./match-session.js";
 // Import Shared Firebase Config
 import { app, db, auth } from "./firebase-config.js";
-import { ref, set, onValue, update, push, child, get, remove, runTransaction } from "firebase/database";
+import { ref, set, onValue, update, push, child, get, remove, runTransaction, serverTimestamp } from "firebase/database";
 import { onAuthStateChanged } from "firebase/auth";
 import { GameRenderer } from "./game-renderer.js";
 import { LocalRoom } from "./local-room.js";
@@ -12,6 +14,11 @@ import { chooseAiAction, aiThinkDelay, AI_LEVELS, getValidMoves as aiValidMoves,
 const GRID_COLS = 7;
 const GRID_ROWS = 9;
 const STATE = {
+    connected: false,
+    serverOffset: 0,
+    roomData: null,
+    movePending: false,
+    seatId: null,
     roomId: null,
     playerId: null, // 'p1' (Blue) or 'p2' (Red)
     isMyTurn: false,
@@ -52,13 +59,108 @@ function reportRoomError(action, error) {
         showToast(`Sunucu hatası (${action}): ${error?.code || error?.message || 'bilinmiyor'}`, 'error');
     }
 }
-function roomUpdate(updates) {
+function serverNow() { return Date.now() + STATE.serverOffset; }
+
+function canPlayOnline() {
+    return STATE.vsAI || (STATE.connected && !STATE.movePending && !STATE.refreshPending);
+}
+
+async function roomUpdate(updates, adjustments = {}) {
     if (STATE.vsAI) {
         if (STATE.localRoom) STATE.localRoom.update(updates);
         return;
     }
-    update(ref(db, 'rooms/' + STATE.roomId), updates)
-        .catch(e => reportRoomError('hamle gönderme', e));
+    if (!canPlayOnline() || !STATE.roomData) return;
+    STATE.movePending = true;
+    const matchId = STATE.matchId;
+    const revision = STATE.roomData.revision ?? 0;
+    const pid = STATE.playerId;
+    try {
+        const result = await runTransaction(ref(db, 'rooms/' + STATE.roomId), room =>
+            commitTimedMove(room, { matchId, revision, pid, updates, adjustments,
+                now: serverNow(), timestamp: serverTimestamp() }), { applyLocally: false });
+        if (!result.committed) showToast('Oyun güncellendi. Hamleni tekrar yap.', 'warning');
+    } catch (error) {
+        reportRoomError('hamle gönderme', error);
+    } finally {
+        STATE.movePending = false;
+        // Replace optimistic positions/powers with the last confirmed snapshot.
+        if (STATE.roomData?.matchId === matchId) applyRoomSnapshot(structuredClone(STATE.roomData));
+    }
+}
+
+function rememberRoom(data) {
+    if (STATE.vsAI || !STATE.seatId || !data.roomSessionId) return;
+    saveSession(localStorage, { roomId: STATE.roomId, playerId: STATE.playerId,
+        seatId: STATE.seatId, roomSessionId: data.roomSessionId });
+}
+
+function showConnectionState() {
+    const banner = document.getElementById('connection-status');
+    if (!banner) return;
+    const waiting = !STATE.vsAI && STATE.roomId && (!STATE.connected || STATE.refreshPending);
+    banner.hidden = !waiting;
+    banner.textContent = STATE.connected ? 'Maç güncelleniyor…' : 'Bağlantı kesildi. Yeniden bağlanılıyor…';
+}
+
+async function restoreOnlineRoom() {
+    if (STATE.vsAI || !STATE.connected || STATE.movePending || STATE.refreshPending || roomRequestPending) return;
+    if (!STATE.roomId && new URLSearchParams(window.location.search).has('room')) return;
+    const saved = readSession(localStorage);
+    if (!saved) return;
+    STATE.refreshPending = true;
+    showConnectionState();
+    try {
+        const snapshot = await get(ref(db, 'rooms/' + saved.roomId));
+        const data = snapshot.val();
+        if (!canResumeRoom(saved, data)) {
+            clearSession(localStorage);
+            if (STATE.roomUnsubscribe) STATE.roomUnsubscribe();
+            STATE.roomId = null;
+            STATE.gameActive = false;
+            stopTurnTimer();
+            showScreen('start');
+            showToast('Önceki maç artık kullanılamıyor.', 'warning');
+            return;
+        }
+        STATE.roomId = saved.roomId;
+        STATE.playerId = saved.playerId;
+        STATE.seatId = saved.seatId;
+        STATE.roomData = structuredClone(data);
+        if (data.status === 'waiting') {
+            showScreen('waiting');
+            document.getElementById('display-room-code').textContent = saved.roomId;
+            listenGameLoop();
+        } else if (STATE.gameActive && STATE.matchId === data.matchId) {
+            applyRoomSnapshot(data);
+        } else {
+            startGame(data);
+        }
+    } catch (error) {
+        reportRoomError('maça dönme', error);
+    } finally {
+        STATE.refreshPending = false;
+        showConnectionState();
+    }
+}
+
+function setupConnection() {
+    onValue(ref(db, '.info/serverTimeOffset'), snapshot => {
+        STATE.serverOffset = Number(snapshot.val()) || 0;
+        if (STATE.gameActive && !STATE.vsAI) tickOnlineClock();
+    });
+    onValue(ref(db, '.info/connected'), snapshot => {
+        STATE.connected = snapshot.val() === true;
+        if (!STATE.connected) cancelDrag();
+        showConnectionState();
+        if (STATE.connected) restoreOnlineRoom();
+    });
+    onAppResume(() => { restoreOnlineRoom(); if (!STATE.vsAI) tickOnlineClock(); });
+}
+
+function leaveMatch() {
+    clearSession(localStorage);
+    location.reload();
 }
 
 function roomSubscribe(callback) {
@@ -104,6 +206,7 @@ function scheduleRender() {
 function init() {
     setupEventListeners();
     setupTutorialListeners();
+    setupConnection();
 
     // Auto-Fill Username if Logged In
     onAuthStateChanged(auth, (user) => {
@@ -193,14 +296,14 @@ function setupEventListeners() {
     });
     const playAiBtn = document.getElementById('play-ai-btn');
     if (playAiBtn) playAiBtn.addEventListener('click', () => startAIGame(STATE.aiLevel));
-    document.getElementById('restart-btn').addEventListener('click', () => location.reload()); // Main Menu
+    document.getElementById('restart-btn').addEventListener('click', () => leaveMatch()); // Main Menu
     document.getElementById('rematch-btn').addEventListener('click', resetRoom); // Rematch
     document.getElementById('cancel-room-btn').addEventListener('click', cancelWaiting);
 
     // Header Controls
     document.getElementById('btn-leave').addEventListener('click', () => {
         showModal('Çıkış', 'Oyundan çıkmak istediğine emin misin?', () => {
-            location.reload();
+            leaveMatch();
         });
     });
     document.getElementById('btn-surrender').addEventListener('click', () => {
@@ -241,6 +344,7 @@ function setupEventListeners() {
 }
 
 function activatePowerup(type) {
+    if (!canPlayOnline()) return;
     const me = STATE.players[STATE.playerId];
     const count = (me.inventory && me.inventory[type]) || 0;
 
@@ -317,6 +421,7 @@ function activatePowerup(type) {
 }
 
 function cancelWaiting() {
+    clearSession(localStorage);
     if (STATE.roomId) {
         // If Creator, remove room
         if (STATE.playerId === 'p1') {
@@ -388,6 +493,7 @@ function buzz(pattern) {
 
 // Duvar sürüklemesine başlanabilir mi? Başlanamıyorsa nedenini söyler.
 function wallDragBlockedReason() {
+    if (!canPlayOnline()) return 'Bağlantı bekleniyor.';
     if (!STATE.gameActive || !STATE.isMyTurn) return 'Sıra sende değil!';
     if (STATE.frozenPlayer === STATE.playerId) return '❄️ Donduruldun! Bu tur duvar koyamazsın.';
     const me = STATE.players[STATE.playerId];
@@ -396,6 +502,7 @@ function wallDragBlockedReason() {
 }
 
 function destroyDragBlockedReason() {
+    if (!canPlayOnline()) return 'Bağlantı bekleniyor.';
     if (!STATE.gameActive || !STATE.isMyTurn) return 'Sıra sende değil!';
     const me = STATE.players[STATE.playerId];
     const count = (me && me.inventory && me.inventory.destroy) || 0;
@@ -682,6 +789,7 @@ function generatePowerup(activePowerups = []) {
 
 // Tahtaya dokunmak her zaman hareket demektir (duvarlar sürüklenerek konur).
 function handleCellClick(cx, cy) {
+    if (!canPlayOnline()) return;
     if (!STATE.gameActive || !STATE.isMyTurn) return;
 
     if (STATE.drag) {
@@ -968,6 +1076,7 @@ function stopConfetti() {
 }
 
 function endGame(winnerId) {
+    if (!STATE.vsAI) clearSession(localStorage);
     STATE.gameActive = false;
     cancelDrag();
     stopConfetti();
@@ -1017,7 +1126,7 @@ function showScreen(name) {
 // --- TEK KİŞİLİK MOD (YAPAY ZEKA) ---
 
 function startAIGame(level) {
-    if (roomRequestPending) {
+    if (roomRequestPending || STATE.refreshPending) {
         showToast('Oda işlemi tamamlanıyor, lütfen bekle.');
         return;
     }
@@ -1029,7 +1138,9 @@ function startAIGame(level) {
     if (STATE.aiTimer) { clearTimeout(STATE.aiTimer); STATE.aiTimer = null; }
     if (STATE.localRoom) STATE.localRoom.destroy();
 
+    clearSession(localStorage);
     STATE.vsAI = true;
+    showConnectionState();
     STATE.aiLevel = aiLevel;
     STATE.aiThinking = false;
     STATE.roomId = 'local-ai';
@@ -1231,7 +1342,7 @@ function createInitialBoardState() {
 let roomRequestPending = false;
 
 async function resetRoom() {
-    if (!STATE.roomId || roomRequestPending) return;
+    if (!STATE.roomId || roomRequestPending || (!STATE.vsAI && !STATE.connected)) return;
     roomRequestPending = true;
     const expectedMatchId = STATE.matchId ?? null;
     const newMatchId = crypto.randomUUID();
@@ -1243,7 +1354,10 @@ async function resetRoom() {
             if (next) STATE.localRoom.set(next);
         } else {
             await runTransaction(ref(db, 'rooms/' + STATE.roomId),
-                room => rematchRoom(room, expectedMatchId, newMatchId, board, turn),
+                room => {
+                    const next = rematchRoom(room, expectedMatchId, newMatchId, board, turn);
+                    return next ? startClock(next, serverTimestamp()) : next;
+                },
                 { applyLocally: false });
         }
         // Only the confirmed snapshot starts the new match on both clients.
@@ -1255,7 +1369,8 @@ async function resetRoom() {
 }
 
 async function createRoom(customId = null) {
-    if (roomRequestPending) return;
+    if (roomRequestPending || STATE.refreshPending) return;
+    if (!STATE.connected) { showToast('Bağlantı bekleniyor.', 'warning'); return; }
     roomRequestPending = true;
     const validCustomId = typeof customId === 'string' ? customId : null;
     const username = document.getElementById('username-input').value || 'P1';
@@ -1263,7 +1378,10 @@ async function createRoom(customId = null) {
         for (let attempt = 0; attempt < 5; attempt++) {
             const roomId = validCustomId || Math.random().toString(36).substring(2, 6).toUpperCase();
             const roomRef = ref(db, 'rooms/' + roomId);
+            const seatId = crypto.randomUUID();
             const initial = {
+                roomSessionId: crypto.randomUUID(),
+                seats: { p1: seatId },
                 matchId: crypto.randomUUID(),
                 p1: username,
                 turn: Math.random() < 0.5 ? 'p1' : 'p2',
@@ -1281,6 +1399,8 @@ async function createRoom(customId = null) {
             STATE.vsAI = false;
             STATE.roomId = roomId;
             STATE.playerId = 'p1';
+            STATE.seatId = seatId;
+            rememberRoom(initial);
             showScreen('waiting');
             document.getElementById('display-room-code').textContent = roomId;
             if (STATE.roomUnsubscribe) STATE.roomUnsubscribe();
@@ -1299,7 +1419,8 @@ async function createRoom(customId = null) {
 }
 
 async function joinRoom() {
-    if (roomRequestPending) return;
+    if (roomRequestPending || STATE.refreshPending) return;
+    if (!STATE.connected) { showToast('Bağlantı bekleniyor.', 'warning'); return; }
     const roomId = document.getElementById('room-code-input').value.trim().toUpperCase();
     const username = document.getElementById('username-input').value || 'P2';
     if (!/^[A-Z0-9]{4,6}$/.test(roomId)) {
@@ -1320,8 +1441,13 @@ async function joinRoom() {
             showToast('Oda bulunamadı! Kodu kontrol et.', 'error');
             return;
         }
-        const result = await runTransaction(roomRef,
-            room => claimSecondPlayer(room, username), { applyLocally: false });
+        const seatId = crypto.randomUUID();
+        const result = await runTransaction(roomRef, room => {
+            const next = claimSecondPlayer(room, username);
+            if (!next) return next;
+            next.seats = { ...next.seats, p2: seatId };
+            return startClock(next, serverTimestamp());
+        }, { applyLocally: false });
         if (!result.committed || !result.snapshot.val()) {
             showToast('Bu oda dolu veya artık katılıma açık değil.', 'error');
             return;
@@ -1329,6 +1455,7 @@ async function joinRoom() {
         STATE.vsAI = false;
         STATE.roomId = roomId;
         STATE.playerId = 'p2';
+        STATE.seatId = seatId;
         startGame(result.snapshot.val());
     } catch (error) {
         reportRoomError('odaya katılma', error);
@@ -1346,20 +1473,42 @@ function updateHeader() {
     const p2TimerEl = document.getElementById('p2-timer');
 
     if (p1TimerEl) {
-        p1TimerEl.innerHTML = `<i class="fa-solid fa-hourglass-start"></i> <span>${p1Time}s</span>`;
+        p1TimerEl.innerHTML = `<i class="fa-solid fa-hourglass-start"></i> <span>${Math.ceil(p1Time)}s</span>`;
         p1TimerEl.classList.toggle('low-time', p1Time <= 15);
     }
     if (p2TimerEl) {
-        p2TimerEl.innerHTML = `<i class="fa-solid fa-hourglass-start"></i> <span>${p2Time}s</span>`;
+        p2TimerEl.innerHTML = `<i class="fa-solid fa-hourglass-start"></i> <span>${Math.ceil(p2Time)}s</span>`;
         p2TimerEl.classList.toggle('low-time', p2Time <= 15);
     }
 }
 
 let turnTimerInterval = null;
 
+let timeoutPending = false;
+function tickOnlineClock() {
+    const room = STATE.roomData;
+    if (!STATE.gameActive || STATE.vsAI || !room) return;
+    const times = remainingMs(room, serverNow());
+    STATE.timeRemaining = { p1: times.p1 / 1000, p2: times.p2 / 1000 };
+    updateHeader();
+    if (times[room.turn] <= 0 && STATE.connected && !STATE.movePending && !timeoutPending && !STATE.refreshPending) {
+        timeoutPending = true;
+        runTransaction(ref(db, 'rooms/' + STATE.roomId), current => {
+            if (current && current.matchId !== room.matchId) return undefined;
+            return finishTimeout(current, serverNow());
+        }, { applyLocally: false }).catch(error => reportRoomError('süre kontrolü', error))
+            .finally(() => { timeoutPending = false; });
+    }
+}
+
 function startTurnTimer(activePlayerId) {
     if (turnTimerInterval) clearInterval(turnTimerInterval);
     if (!STATE.gameActive) return;
+    if (!STATE.vsAI) {
+        tickOnlineClock();
+        turnTimerInterval = setInterval(tickOnlineClock, 250);
+        return;
+    }
 
     // Only run timer for the active player
     turnTimerInterval = setInterval(() => {
@@ -1391,6 +1540,9 @@ function stopTurnTimer() {
 }
 
 function startGame(data) {
+    STATE.roomData = structuredClone(data);
+    rememberRoom(data);
+    showConnectionState();
     if (STATE.roomUnsubscribe) {
         STATE.roomUnsubscribe();
         STATE.roomUnsubscribe = null;
@@ -1433,9 +1585,12 @@ function listenGameLoop() {
         STATE.roomUnsubscribe = null;
     }
 
-    STATE.roomUnsubscribe = roomSubscribe((snapshot) => {
-        const data = snapshot.val();
+    STATE.roomUnsubscribe = roomSubscribe(snapshot => applyRoomSnapshot(snapshot.val()));
+}
+
+function applyRoomSnapshot(data) {
         if (!data) return;
+        STATE.roomData = structuredClone(data);
 
         if (data.status === 'active' &&
             (!STATE.gameActive || (data.matchId ?? null) !== STATE.matchId)) {
@@ -1515,10 +1670,11 @@ function listenGameLoop() {
             checkWin();
             maybeRunAI(data);
         }
-    });
 }
 
 function sendMove(moveData, endTurn = true) {
+    if (!canPlayOnline()) return;
+    const adjustments = {};
     const nextTurn = STATE.playerId === 'p1' ? 'p2' : 'p1';
 
     // Current State Copies
@@ -1569,6 +1725,7 @@ function sendMove(moveData, endTurn = true) {
                     // Instant Time Bonus
                     if (STATE.timeRemaining && STATE.timeRemaining[pid] !== undefined) {
                         STATE.timeRemaining[pid] += 10; // Update local state first
+                        adjustments[pid] = 10;
                         updates[`/boardState/timeRemaining/${pid}`] = STATE.timeRemaining[pid];
                     }
                 } else {
@@ -1619,6 +1776,7 @@ function sendMove(moveData, endTurn = true) {
             updates[`${invPath}/double_turn`] = Math.max(0, (myInv.double_turn || 0) - 1);
         } else if (moveData.powerupType === 'hourglass') {
             const oppId = pid === 'p1' ? 'p2' : 'p1';
+            adjustments[oppId] = -10;
             // NEW RULE: Deduct 10 seconds from opponent
             // Logic: we update the boardState.timeRemaining in Firebase directly.
             updates[`/boardState/timeRemaining/${oppId}`] = Math.max(0, (STATE.timeRemaining[oppId] || 90) - 10);
@@ -1662,7 +1820,7 @@ function sendMove(moveData, endTurn = true) {
         }
 
         // Spawn Logic: Max 5 Total (3 Regular + 2 Time)
-        if (currentPowerups.length < 5 && Math.random() < 0.22) {
+        if (moveData.type !== 'surrender' && currentPowerups.length < 5 && Math.random() < 0.22) {
             const newP = generatePowerup(currentPowerups);
             if (newP) {
                 currentPowerups.push(newP);
@@ -1671,7 +1829,7 @@ function sendMove(moveData, endTurn = true) {
         }
     }
 
-    roomUpdate(updates);
+    roomUpdate(updates, adjustments);
 
     // Only yield turn if we didn't use double_turn
     if (endTurn && !usedDoubleTurn) {
