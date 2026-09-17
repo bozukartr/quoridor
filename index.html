@@ -66,30 +66,25 @@
 
         <!-- Login / Start Screen -->
         <div id="start-screen" class="screen active">
-            <main class="home-shell">
-                <div class="menu-topbar"><a class="wordmark" href="index.html" aria-label="Quoridor ana sayfa">quoridor<span>●</span></a><a class="profile-shortcut" href="profile.html" aria-label="Profilim"><i class="fa-regular fa-user"></i></a></div>
-                <section class="home-hero">
-                    <div class="hero-copy"><span class="eyebrow">BİR HAMLE ÖNDE</span><h1>Yolunu aç.<br><span>Oyunu değiştir.</span></h1><p>Stratejini seç. Sıradaki hamle senin.</p></div>
-                    <div class="hero-mark" aria-hidden="true"><img src="logo.png" alt=""></div>
-                </section>
-                <label class="player-field" for="username-input"><span class="player-field-icon"><i class="fa-regular fa-user"></i></span><span class="player-field-content"><span>OYUNCU ADIN</span><input type="text" id="username-input" placeholder="Adını yaz" maxlength="12" autocomplete="nickname"></span><i class="fa-solid fa-pen" aria-hidden="true"></i></label>
-                <section class="solo-card" aria-labelledby="solo-title">
-                    <div class="mode-heading"><span class="mode-symbol"><i class="fa-solid fa-robot"></i></span><div><span class="eyebrow">TEK OYUNCULU</span><h2 id="solo-title">Kendine meydan oku</h2></div><span class="mode-tag">AI</span></div>
-                    <div class="difficulty-select" id="ai-difficulty" role="group" aria-label="Zorluk seviyesi">
-                        <button type="button" class="diff-btn" data-level="easy" aria-pressed="false">Kolay</button>
-                        <button type="button" class="diff-btn active" data-level="medium" aria-pressed="true">Orta</button>
-                        <button type="button" class="diff-btn" data-level="hard" aria-pressed="false">Zor</button>
-                    </div>
-                    <button id="play-ai-btn" class="menu-play"><span>Oyna</span><i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button>
-                </section>
-                <section class="online-card" aria-labelledby="online-title">
-                    <div class="section-heading"><h2 id="online-title">Arkadaşınla oyna</h2><span>ÇEVRİMİÇİ</span></div>
-                    <button id="create-room-btn" class="create-room-action"><span class="room-symbol"><i class="fa-solid fa-plus"></i></span><span>Oda oluştur<small>Bir arkadaşını oyuna çağır</small></span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>
-                    <div class="room-entry"><label class="sr-only" for="room-code-input">Oda kodu</label><input type="text" id="room-code-input" placeholder="Oda kodunu gir" autocomplete="off" autocapitalize="characters" spellcheck="false"><button id="join-room-btn">Katıl <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button></div>
-                </section>
-                <button id="open-tutorial-btn" class="learn-link"><i class="fa-regular fa-circle-question"></i> Nasıl oynanır? <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></button>
+            <main class="lobby">
+                <div class="lobby-top">
+                    <button class="player-chip" data-open-sheet="name-sheet" aria-label="Oyuncu adını düzenle"><span class="chip-avatar"><img src="quoridor-symbol.svg" alt=""></span><span><small>OYUNCU</small><strong id="lobby-player-name">Sen</strong></span><i class="fa-solid fa-pen" aria-hidden="true"></i></button>
+                    <button id="open-tutorial-btn" class="round-control" aria-label="Nasıl oynanır?"><i class="fa-solid fa-question"></i></button>
+                </div>
+                <div class="lobby-title"><span>HER DUVAR YENİ BİR YOL.</span><h1>QUORIDOR</h1></div>
+                <div class="lobby-stage" aria-hidden="true"><div class="stage-halo"></div><span class="orbit orbit-one">✦</span><span class="orbit orbit-two">✦</span><div class="mini-board"></div><div class="stage-mascot" data-brand-mark></div><span class="mini-pawn pawn-pink"></span><span class="mini-pawn pawn-blue"></span><span class="stage-wall"></span></div>
+                <div class="lobby-actions">
+                    <div class="mode-switch" role="group" aria-label="Oyun modu"><button type="button" data-mode="solo" aria-pressed="true"><i class="fa-solid fa-robot"></i> Tek oyuncu</button><button type="button" data-mode="friends" aria-pressed="false"><i class="fa-solid fa-user-group"></i> Arkadaşınla</button></div>
+                    <section id="solo-mode" aria-label="Bilgisayara karşı oyna">
+                        <div class="difficulty-select" id="ai-difficulty" role="group" aria-label="Zorluk seviyesi"><button type="button" class="diff-btn" data-level="easy" aria-pressed="false">Kolay</button><button type="button" class="diff-btn active" data-level="medium" aria-pressed="true">Orta</button><button type="button" class="diff-btn" data-level="hard" aria-pressed="false">Zor</button></div>
+                        <button id="play-ai-btn" class="big-play"><i class="fa-solid fa-play" aria-hidden="true"></i> OYNA</button>
+                    </section>
+                    <section id="friends-mode" aria-label="Arkadaşınla oyna" hidden><p class="mode-hint">Bir oda aç. Arkadaşına meydan oku.</p><div class="friend-play-actions"><button id="create-room-btn" class="big-play">ODA OLUŞTUR</button><button type="button" class="join-trigger" data-open-sheet="room-sheet"><i class="fa-solid fa-key" aria-hidden="true"></i> Kodla katıl</button></div></section>
+                </div>
+                <nav class="game-dock" aria-label="Ana gezinme"><a href="index.html" aria-current="page"><i class="fa-solid fa-chess-board"></i><span>OYNA</span></a><a href="profile.html"><i class="fa-solid fa-user-astronaut"></i><span>PROFİL</span></a></nav>
             </main>
-            <nav class="app-nav" aria-label="Ana gezinme"><a href="index.html" aria-current="page"><i class="fa-solid fa-chess-board"></i><span>Oyna</span></a><a href="profile.html"><i class="fa-regular fa-user"></i><span>Profil</span></a></nav>
+            <dialog id="name-sheet" class="game-sheet" aria-labelledby="name-sheet-title"><div class="sheet-grip"></div><button type="button" class="sheet-close" data-close-sheet aria-label="Kapat">×</button><h2 id="name-sheet-title">Sana ne diyelim?</h2><label for="username-input">Oyuncu adın</label><i hidden aria-hidden="true"></i><input type="text" id="username-input" placeholder="Adını yaz" maxlength="12" autocomplete="nickname"><button type="button" class="big-play" data-close-sheet>TAMAM</button></dialog>
+            <dialog id="room-sheet" class="game-sheet" aria-labelledby="room-sheet-title"><div class="sheet-grip"></div><button type="button" class="sheet-close" data-close-sheet aria-label="Kapat">×</button><h2 id="room-sheet-title">Oyuna katıl</h2><label for="room-code-input">Arkadaşının oda kodu</label><input type="text" id="room-code-input" placeholder="ODA KODU" autocomplete="off" autocapitalize="characters" spellcheck="false"><button id="join-room-btn" class="big-play">KATIL <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button></dialog>
         </div>
 
         <!-- Waiting Screen -->
