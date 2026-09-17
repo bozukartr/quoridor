@@ -69,7 +69,7 @@
             <main class="lobby">
                 <div class="lobby-top">
                     <button class="player-chip" data-open-sheet="name-sheet" aria-label="Oyuncu adını düzenle"><span class="chip-avatar"><img src="quoridor-symbol.svg" alt=""></span><span><small>OYUNCU</small><strong id="lobby-player-name">Sen</strong></span><i class="fa-solid fa-pen" aria-hidden="true"></i></button>
-                    <button id="open-tutorial-btn" class="round-control" aria-label="Nasıl oynanır?"><i class="fa-solid fa-question"></i></button>
+                    <div class="lobby-tools"><button id="open-tutorial-btn" class="round-control" aria-label="Nasıl oynanır?"><i class="fa-solid fa-question"></i></button><button class="round-control" data-show-settings aria-label="Ayarlar"><i class="fa-solid fa-gear"></i></button></div>
                 </div>
                 <div class="lobby-title"><span>HER DUVAR YENİ BİR YOL.</span><h1>QUORIDOR</h1></div>
                 <div class="lobby-stage" aria-hidden="true"><div class="stage-halo"></div><span class="orbit orbit-one">✦</span><span class="orbit orbit-two">✦</span><div class="mini-board"></div><div class="stage-mascot" data-brand-mark></div><span class="mini-pawn pawn-pink"></span><span class="mini-pawn pawn-blue"></span><span class="stage-wall"></span></div>
@@ -81,7 +81,7 @@
                     </section>
                     <section id="friends-mode" aria-label="Arkadaşınla oyna" hidden><p class="mode-hint">Bir oda aç. Arkadaşına meydan oku.</p><div class="friend-play-actions"><button id="create-room-btn" class="big-play">ODA OLUŞTUR</button><button type="button" class="join-trigger" data-open-sheet="room-sheet"><i class="fa-solid fa-key" aria-hidden="true"></i> Kodla katıl</button></div></section>
                 </div>
-                <nav class="game-dock" aria-label="Ana gezinme"><a href="index.html" aria-current="page"><i class="fa-solid fa-chess-board"></i><span>OYNA</span></a><a href="profile.html"><i class="fa-solid fa-user-astronaut"></i><span>PROFİL</span></a></nav>
+                <nav class="game-dock" aria-label="Ana gezinme"><button type="button" data-show-store aria-label="Mağaza"><i class="fa-solid fa-store"></i><span>MAĞAZA</span></button><a href="index.html" aria-current="page"><i class="fa-solid fa-chess-board"></i><span>OYNA</span></a><a href="profile.html"><i class="fa-solid fa-user-astronaut"></i><span>PROFİL</span></a></nav>
             </main>
             <dialog id="name-sheet" class="game-sheet" aria-labelledby="name-sheet-title"><div class="sheet-grip"></div><button type="button" class="sheet-close" data-close-sheet aria-label="Kapat">×</button><h2 id="name-sheet-title">Sana ne diyelim?</h2><label for="username-input">Oyuncu adın</label><i hidden aria-hidden="true"></i><input type="text" id="username-input" placeholder="Adını yaz" maxlength="12" autocomplete="nickname"><button type="button" class="big-play" data-close-sheet>TAMAM</button></dialog>
             <dialog id="room-sheet" class="game-sheet" aria-labelledby="room-sheet-title"><div class="sheet-grip"></div><button type="button" class="sheet-close" data-close-sheet aria-label="Kapat">×</button><h2 id="room-sheet-title">Oyuna katıl</h2><label for="room-code-input">Arkadaşının oda kodu</label><input type="text" id="room-code-input" placeholder="ODA KODU" autocomplete="off" autocapitalize="characters" spellcheck="false"><button id="join-room-btn" class="big-play">KATIL <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button></dialog>

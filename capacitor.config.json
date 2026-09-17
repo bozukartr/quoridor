@@ -5,7 +5,10 @@
   "backgroundColor": "#0f172a",
   "includePlugins": [
     "@capacitor/app",
-    "@capacitor-firebase/authentication"
+    "@capacitor-firebase/authentication",
+    "@capacitor/haptics",
+    "@capacitor-community/admob",
+    "@revenuecat/purchases-capacitor"
   ],
   "plugins": {
     "FirebaseAuthentication": {

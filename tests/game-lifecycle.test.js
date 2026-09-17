@@ -7,6 +7,7 @@ import { LocalRoom } from '../local-room.js';
 import * as session from '../match-session.js';
 import * as powers from '../powerups.js';
 import * as ai from '../ai.js';
+import { createSettings } from '../settings.js';
 import * as online from '../online-match.js';
 
 function harness() {
@@ -32,7 +33,7 @@ function harness() {
     const context = vm.createContext({
         ...session, ...online, ...powers, ...ai, aiValidMoves: ai.getValidMoves, LocalRoom,
         crypto: webcrypto, structuredClone, console, Date, Math,
-        localStorage: storage, URLSearchParams,
+        localStorage: storage, URLSearchParams, settings: createSettings(storage), recordFinishedMatch() {},
         serverTimestamp: () => Date.now(),
         db: {}, app: {}, auth: { currentUser: { uid: 'test-player' } },
         document: { getElementById: element, addEventListener() {}, querySelectorAll: () => [] },

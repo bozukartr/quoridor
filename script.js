@@ -1,3 +1,6 @@
+import { settings } from './settings.js';
+import { recordFinishedMatch, showPostMatchAd } from './monetization.js';
+import { mobileTransition } from './mobile-ui.js';
 import { remainingMs, startClock, commitTimedMove, finishTimeout, saveSession, readSession, clearSession, canResumeRoom } from "./online-match.js";
 import { onAppResume } from "./native-lifecycle.js";
 import { resetMatchState, claimSecondPlayer, rematchRoom } from "./match-session.js";
@@ -104,6 +107,7 @@ function showConnectionState() {
 }
 
 async function restoreOnlineRoom() {
+    if (returningToMenu) return;
     if (STATE.vsAI || !STATE.connected || STATE.movePending || STATE.refreshPending || roomRequestPending) return;
     if (!STATE.roomId && new URLSearchParams(window.location.search).has('room')) return;
     const saved = readSession(localStorage);
@@ -112,6 +116,7 @@ async function restoreOnlineRoom() {
     showConnectionState();
     try {
         const snapshot = await get(ref(db, 'rooms/' + saved.roomId));
+        if (returningToMenu) return;
         const data = snapshot.val();
         if (!canResumeRoom(saved, data)) {
             clearSession(localStorage);
@@ -162,6 +167,30 @@ function leaveMatch() {
     clearSession(localStorage);
     location.reload();
 }
+
+let returningToMenu = false;
+async function returnToMenu() {
+    if (returningToMenu) return;
+    returningToMenu = true;
+    clearSession(localStorage);
+    // A remote rematch must not start a new round behind a post-match ad.
+    if (STATE.roomUnsubscribe) { STATE.roomUnsubscribe(); STATE.roomUnsubscribe = null; }
+    mobileTransition.open();
+    try { await showPostMatchAd(); }
+    finally { mobileTransition.close(); leaveMatch(); }
+}
+document.addEventListener('quoridor:back', event => {
+    if (screens.game.classList.contains('active')) {
+        event.preventDefault();
+        document.getElementById('btn-leave').click();
+    } else if (screens.waiting.classList.contains('active')) {
+        event.preventDefault();
+        showModal('Odadan çık', 'Bekleme odasından ayrılmak istiyor musun?', cancelWaiting);
+    } else if (screens.gameOver.classList.contains('active')) {
+        event.preventDefault();
+        void returnToMenu();
+    }
+});
 
 function roomSubscribe(callback) {
     if (STATE.vsAI) {
@@ -296,7 +325,7 @@ function setupEventListeners() {
     });
     const playAiBtn = document.getElementById('play-ai-btn');
     if (playAiBtn) playAiBtn.addEventListener('click', () => startAIGame(STATE.aiLevel));
-    document.getElementById('restart-btn').addEventListener('click', () => leaveMatch()); // Main Menu
+    document.getElementById('restart-btn').addEventListener('click', returnToMenu); // Main Menu
     document.getElementById('rematch-btn').addEventListener('click', resetRoom); // Rematch
     document.getElementById('cancel-room-btn').addEventListener('click', cancelWaiting);
 
@@ -672,7 +701,7 @@ function updateWallCounts() {
 class SoundManager {
     constructor() {
         this.sounds = {};
-        this.volume = 0.5;
+        this.volume = settings.get().volume;
         this.assets = ['click', 'error', 'lose', 'move', 'powerup_collect', 'powerup_spawn', 'turn_start', 'wall_place', 'wall_rotate', 'win'];
         this.init();
     }
@@ -685,9 +714,11 @@ class SoundManager {
 
         const slider = document.getElementById('volume-slider');
         if (slider) {
-            slider.addEventListener('input', (e) => this.setVolume(e.target.value));
+            slider.addEventListener('input', (e) => settings.update({ volume: Number(e.target.value) }));
             slider.addEventListener('mousedown', (e) => e.stopPropagation()); // Prevent game clicks
         }
+
+        settings.subscribe(value => this.setVolume(value.volume));
 
         // Global Click Sound for Buttons
         document.addEventListener('click', (e) => {
@@ -699,6 +730,8 @@ class SoundManager {
 
     setVolume(v) {
         this.volume = v;
+        const slider = document.getElementById('volume-slider');
+        if (slider) slider.value = v;
         Object.values(this.sounds).forEach(s => s.volume = v);
 
         // Update Icon
@@ -1119,8 +1152,10 @@ function renderBoard() { scheduleRender(); }
 function showScreen(name) {
     cancelDrag(); // ekran değişirken yarım kalan sürükleme tahtayı kilitlemesin
     if (name !== 'gameOver') stopConfetti();
+    const wasResult = screens.gameOver.classList.contains('active');
     Object.values(screens).forEach(s => s.classList.remove('active'));
     screens[name].classList.add('active');
+    if (name === 'gameOver' && !wasResult) recordFinishedMatch(STATE.roomData?.matchId);
 }
 
 // --- TEK KİŞİLİK MOD (YAPAY ZEKA) ---

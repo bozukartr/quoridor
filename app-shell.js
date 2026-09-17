@@ -1,3 +1,4 @@
+import './mobile-ui.js';
 import { Capacitor } from '@capacitor/core';
 import '@fortawesome/fontawesome-free/css/all.min.css';
 import '@fontsource/outfit/300.css';
