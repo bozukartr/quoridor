@@ -18,6 +18,14 @@ npm run preview
 
 Firebase SDK, PixiJS, Outfit ve Font Awesome npm üzerinden kilitli sürümlerle paketlenir. Sesler, simge ve PWA manifesti `dist/` içine kopyalanır. Web sürümünde ilk başarılı çevrimiçi yüklemeden sonra service worker tüm yerel kaynakları önbelleğe alır. Güncelleme, açık eski oyun oturumları kapandıktan sonra etkinleşir. Native sürümde kaynaklar uygulamaya gömülüdür ve service worker kaydedilmez. Çevrimiçi maç, profil ve Google girişi internet gerektirir.
 
+## GitHub Pages yayını
+
+Repository Settings → Pages → Build and deployment → Source alanında **GitHub Actions** seçilmelidir. Repo kökünü branch üzerinden yayımlamak npm bağımlılıklarını derlemez; tarayıcıda `Failed to resolve module specifier "@capacitor/core"` hatasına neden olur.
+
+`.github/workflows/pages.yml`, `main` güncellendiğinde bağımlılıkları kurar, testleri ve Vite derlemesini çalıştırır, yalnızca `dist/` çıktısını Pages'e gönderir. Gerekirse Actions → Deploy built game to GitHub Pages → Run workflow ile `main` için yeniden çalıştırılabilir. `base: './'` ayarı `/quoridor/` alt dizinini destekler. PR doğrulaması siteyi yayımlamaz.
+
+Yayın tamamlandıktan sonra eski oyun sekmelerini kapatıp yeniden açın. Hata sürerse önce gizli pencerede kontrol edin; eski service worker önbelleği kalmış olabilir. Site verilerini temizlemek kayıtlı oturumu ve maça dönüş kaydını da siler.
+
 ## Mobil projeler
 
 ```sh
