@@ -342,7 +342,7 @@ function updateUI(user) {
     userName.textContent = user.displayName;
 
     // Default to fallback first to avoid empty/broken state during load
-    const fallbackUrl = new URL('./logo.png', import.meta.url).href;
+    const fallbackUrl = new URL('./quoridor-symbol.svg', import.meta.url).href;
 
     if (user.photoURL) {
         userAvatar.src = user.photoURL;
@@ -364,7 +364,7 @@ function resetUI() {
     myFriendCodeDisplay.textContent = "...";
     friendsList.innerHTML = '<div class="empty-state">Arkadaşlarını eklemek için Google ile giriş yap.</div>';
     userName.textContent = "Misafir Oyuncu";
-    userAvatar.src = new URL('./logo.png', import.meta.url).href;
+    userAvatar.src = new URL('./quoridor-symbol.svg', import.meta.url).href;
     userRank.textContent = "Çaylak";
     userRank.className = "rank-badge rookie";
     authBtn.innerHTML = '<i class="fa-brands fa-google"></i> Giriş Yap';

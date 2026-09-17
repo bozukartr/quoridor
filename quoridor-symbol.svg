@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="280 170 520 540" fill="none" role="img" aria-labelledby="logo-title logo-desc">
+  <title id="logo-title">Quoridor simgesi</title>
+  <desc id="logo-desc">Mavi bir karakter pembe bir duvarı yerleştiriyor. Yazısız, şeffaf arka planlı vektör logo.</desc>
+  <defs>
+    <linearGradient id="character-blue" x1="385" y1="215" x2="608" y2="678" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#668AFF"/>
+      <stop offset="1" stop-color="#4B6DED"/>
+    </linearGradient>
+    <linearGradient id="wall-pink" x1="634" y1="312" x2="762" y2="679" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FF79AA"/>
+      <stop offset="1" stop-color="#EF5891"/>
+    </linearGradient>
+  </defs>
+  <g id="wall">
+    <rect x="632" y="312" width="132" height="366" rx="18" fill="url(#wall-pink)"/>
+    <path d="M650 320H746" stroke="#FFA0C2" stroke-width="3" stroke-linecap="round" opacity=".55"/>
+  </g>
+  <g id="character" fill="url(#character-blue)">
+    <g id="back-leg">
+      <path d="M398 487L444 532L430 577Q427 586 420 594L365 665Q349 687 328 674Q304 660 320 637L378 558Z"/>
+    </g>
+    <g id="body">
+      <path d="M475 303C448 304 433 322 426 350L407 439C402 461 408 477 423 493L492 565V650C492 667 503 679 520 679C536 679 547 667 547 650V552C547 541 543 532 535 524L475 461L492 394L519 424C526 433 532 437 544 440L613 454C629 457 642 449 645 435C648 421 639 410 624 407L558 395L520 330C510 312 496 302 475 303Z"/>
+    </g>
+    <circle id="head" cx="518" cy="244" r="52"/>
+  </g>
+</svg>
