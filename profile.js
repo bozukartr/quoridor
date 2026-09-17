@@ -337,10 +337,12 @@ function listenForInvites(uid) {
 window.inviteFriend = inviteFriend;
 
 function updateUI(user) {
+    openAddFriendBtn.disabled = false;
+    copyCodeBtn.disabled = false;
     userName.textContent = user.displayName;
 
     // Default to fallback first to avoid empty/broken state during load
-    const fallbackUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(user.displayName)}&background=random`;
+    const fallbackUrl = new URL('./logo.png', import.meta.url).href;
 
     if (user.photoURL) {
         userAvatar.src = user.photoURL;
@@ -357,8 +359,12 @@ function updateUI(user) {
 }
 
 function resetUI() {
+    openAddFriendBtn.disabled = true;
+    copyCodeBtn.disabled = true;
+    myFriendCodeDisplay.textContent = "...";
+    friendsList.innerHTML = '<div class="empty-state">Arkadaşlarını eklemek için Google ile giriş yap.</div>';
     userName.textContent = "Misafir Oyuncu";
-    userAvatar.src = "https://ui-avatars.com/api/?name=Guest&background=random";
+    userAvatar.src = new URL('./logo.png', import.meta.url).href;
     userRank.textContent = "Çaylak";
     userRank.className = "rank-badge rookie";
     authBtn.innerHTML = '<i class="fa-brands fa-google"></i> Giriş Yap';
@@ -366,7 +372,7 @@ function resetUI() {
     statLosses.textContent = "0";
     statRate.textContent = "%0";
     statFavPowerup.textContent = "-";
-    historyList.innerHTML = '<div class="empty-state">Giriş yapmalısınız.</div>';
+    historyList.innerHTML = '<div class="empty-state">Maç geçmişini görmek için Google ile giriş yap.</div>';
 }
 
 function loadStats(uid) {
