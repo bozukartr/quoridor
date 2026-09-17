@@ -16,6 +16,8 @@
     <meta name="theme-color" content="#0f172a">
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="mobilemedia.css">
+    <link rel="stylesheet" href="menu-ui.css">
+    <script type="module" src="menu-ui.js"></script>
     <script type="module" src="app-shell.js"></script>
 </head>
 
@@ -64,64 +66,30 @@
 
         <!-- Login / Start Screen -->
         <div id="start-screen" class="screen active">
-            <div class="start-content">
-                <div class="logo-area">
-                    <img src="logo.png" alt="Quoridor" class="app-logo">
-                </div>
-
-                <div class="card start-card">
-                    <div class="input-group">
-                        <i class="fa-solid fa-user"></i>
-                        <input type="text" id="username-input" placeholder="Kullanıcı Adı" maxlength="12">
-                    </div>
-
-                    <button id="play-ai-btn" class="btn primary full-width">
-                        <div class="btn-content">
-                            <span>Yapay Zekaya Karşı Oyna</span>
-                            <i class="fa-solid fa-robot"></i>
-                        </div>
-                    </button>
-
+            <main class="home-shell">
+                <div class="menu-topbar"><a class="wordmark" href="index.html" aria-label="Quoridor ana sayfa">quoridor<span>●</span></a><a class="profile-shortcut" href="profile.html" aria-label="Profilim"><i class="fa-regular fa-user"></i></a></div>
+                <section class="home-hero">
+                    <div class="hero-copy"><span class="eyebrow">BİR HAMLE ÖNDE</span><h1>Yolunu aç.<br><span>Oyunu değiştir.</span></h1><p>Stratejini seç. Sıradaki hamle senin.</p></div>
+                    <div class="hero-mark" aria-hidden="true"><img src="logo.png" alt=""></div>
+                </section>
+                <label class="player-field" for="username-input"><span class="player-field-icon"><i class="fa-regular fa-user"></i></span><span class="player-field-content"><span>OYUNCU ADIN</span><input type="text" id="username-input" placeholder="Adını yaz" maxlength="12" autocomplete="nickname"></span><i class="fa-solid fa-pen" aria-hidden="true"></i></label>
+                <section class="solo-card" aria-labelledby="solo-title">
+                    <div class="mode-heading"><span class="mode-symbol"><i class="fa-solid fa-robot"></i></span><div><span class="eyebrow">TEK OYUNCULU</span><h2 id="solo-title">Kendine meydan oku</h2></div><span class="mode-tag">AI</span></div>
                     <div class="difficulty-select" id="ai-difficulty" role="group" aria-label="Zorluk seviyesi">
-                        <button type="button" class="diff-btn" data-level="easy">Kolay</button>
-                        <button type="button" class="diff-btn active" data-level="medium">Orta</button>
-                        <button type="button" class="diff-btn" data-level="hard">Zor</button>
+                        <button type="button" class="diff-btn" data-level="easy" aria-pressed="false">Kolay</button>
+                        <button type="button" class="diff-btn active" data-level="medium" aria-pressed="true">Orta</button>
+                        <button type="button" class="diff-btn" data-level="hard" aria-pressed="false">Zor</button>
                     </div>
-
-                    <div class="divider">
-                        <span>ÇEVRİMİÇİ</span>
-                    </div>
-
-                    <button id="create-room-btn" class="btn primary full-width">
-                        <div class="btn-content">
-                            <span>Oda Oluştur</span>
-                            <i class="fa-solid fa-plus-circle"></i>
-                        </div>
-                    </button>
-
-                    <div class="divider">
-                        <span>VEYA</span>
-                    </div>
-
-                    <div class="join-area">
-                        <div class="input-group">
-                            <i class="fa-solid fa-key"></i>
-                            <input type="text" id="room-code-input" placeholder="Oda Kodu">
-                        </div>
-                        <button id="join-room-btn" class="btn secondary full-width">Odaya Katıl</button>
-                    </div>
-
-                    <div class="tutorial-link-area"
-                        style="display: flex; gap: 16px; justify-content: center; margin-top: 10px;">
-                        <button id="open-tutorial-btn" class="btn text-btn"><i
-                                class="fa-regular fa-circle-question"></i> Nasıl Oynanır?</button>
-                        <a href="profile.html" class="btn text-btn"
-                            style="text-decoration: none; color: var(--text-secondary);">
-                            <i class="fa-solid fa-user"></i> Profilim
-                        </a>
-                    </div>
-                </div>
-            </div>
+                    <button id="play-ai-btn" class="menu-play"><span>Oyna</span><i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button>
+                </section>
+                <section class="online-card" aria-labelledby="online-title">
+                    <div class="section-heading"><h2 id="online-title">Arkadaşınla oyna</h2><span>ÇEVRİMİÇİ</span></div>
+                    <button id="create-room-btn" class="create-room-action"><span class="room-symbol"><i class="fa-solid fa-plus"></i></span><span>Oda oluştur<small>Bir arkadaşını oyuna çağır</small></span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>
+                    <div class="room-entry"><label class="sr-only" for="room-code-input">Oda kodu</label><input type="text" id="room-code-input" placeholder="Oda kodunu gir" autocomplete="off" autocapitalize="characters" spellcheck="false"><button id="join-room-btn">Katıl <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button></div>
+                </section>
+                <button id="open-tutorial-btn" class="learn-link"><i class="fa-regular fa-circle-question"></i> Nasıl oynanır? <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></button>
+            </main>
+            <nav class="app-nav" aria-label="Ana gezinme"><a href="index.html" aria-current="page"><i class="fa-solid fa-chess-board"></i><span>Oyna</span></a><a href="profile.html"><i class="fa-regular fa-user"></i><span>Profil</span></a></nav>
         </div>
 
         <!-- Waiting Screen -->

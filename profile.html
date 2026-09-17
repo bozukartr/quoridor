@@ -3,22 +3,26 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Profilim - Quoridor</title>
     <link rel="stylesheet" href="profile.css">
+    <link rel="stylesheet" href="menu-ui.css">
+    <script type="module" src="menu-ui.js"></script>
     <!-- Font Awesome -->
     <script type="module" src="app-shell.js"></script>
 </head>
 
-<body>
+<body class="profile-page">
 
     <div class="profile-container">
+        <div class="menu-topbar"><a class="back-control" href="index.html" aria-label="Oyuna dön"><i class="fa-solid fa-arrow-left"></i></a><span class="page-title">Profilim</span><span class="topbar-spacer"></span></div>
         <!-- Header / User Info -->
         <header class="profile-header">
             <div class="avatar-container">
-                <img id="user-avatar" src="https://ui-avatars.com/api/?name=Guest&background=random" alt="Avatar">
+                <img id="user-avatar" src="logo.png" alt="Avatar">
             </div>
             <div class="user-info">
+                <span class="eyebrow">SENİN OYUNUN, SENİN İZİN</span>
                 <h1 id="user-name">Misafir Oyuncu</h1>
                 <span id="user-rank" class="rank-badge rookie">Çaylak</span>
             </div>
@@ -28,13 +32,13 @@
         </header>
 
         <!-- Tabs Navigation -->
-        <div class="tabs-nav">
-            <button class="tab-btn active" data-tab="stats">İstatistikler</button>
-            <button class="tab-btn" data-tab="friends">Arkadaşlar</button>
+        <div class="tabs-nav" role="tablist" aria-label="Profil bölümleri">
+            <button class="tab-btn active" role="tab" aria-selected="true" aria-controls="tab-stats" data-tab="stats">İstatistikler</button>
+            <button class="tab-btn" role="tab" aria-selected="false" aria-controls="tab-friends" data-tab="friends">Arkadaşlar</button>
         </div>
 
         <!-- STATS TAB -->
-        <div id="tab-stats" class="tab-content active">
+        <div role="tabpanel" aria-label="İstatistikler" id="tab-stats" class="tab-content active">
             <!-- Stats Grid -->
             <section class="stats-section">
                 <div class="stat-card">
@@ -70,14 +74,14 @@
         </div>
 
         <!-- FRIENDS TAB -->
-        <div id="tab-friends" class="tab-content">
+        <div role="tabpanel" aria-label="Arkadaşlar" id="tab-friends" class="tab-content">
             <div class="friends-header">
                 <div class="my-code-box">
                     <span>Kodunuz:</span>
                     <strong id="my-friend-code">...</strong>
-                    <i class="fa-regular fa-copy" id="copy-code-btn" title="Kopyala"></i>
+                    <button type="button" class="copy-code" id="copy-code-btn" disabled aria-label="Arkadaş kodunu kopyala"><i class="fa-regular fa-copy"></i></button>
                 </div>
-                <button class="btn-add-friend" id="open-add-friend-btn">
+                <button class="btn-add-friend" id="open-add-friend-btn" disabled>
                     <i class="fa-solid fa-user-plus"></i> Ekle
                 </button>
             </div>
@@ -93,13 +97,14 @@
         </a>
     </div>
 
+    <nav class="app-nav" aria-label="Ana gezinme"><a href="index.html"><i class="fa-solid fa-chess-board"></i><span>Oyna</span></a><a href="profile.html" aria-current="page"><i class="fa-regular fa-user"></i><span>Profil</span></a></nav>
     <!-- Logic -->
     <script type="module" src="profile.js"></script>
 
     <!-- Match Details Modal -->
     <div id="details-modal" class="modal hidden">
         <div class="modal-content">
-            <span class="close-modal">&times;</span>
+            <button type="button" class="close-modal" aria-label="Kapat">&times;</button>
             <div id="modal-icon" class="modal-icon"></div>
             <h2 id="modal-result">Galibiyet</h2>
             <div class="modal-details">
@@ -135,7 +140,7 @@
     <!-- Add Friend Modal -->
     <div id="add-friend-modal" class="modal hidden">
         <div class="modal-content">
-            <span class="close-modal" id="close-add-friend-btn">&times;</span>
+            <button type="button" class="close-modal" id="close-add-friend-btn" aria-label="Kapat">&times;</button>
             <div class="modal-icon"><i class="fa-solid fa-user-plus" style="color: var(--primary)"></i></div>
             <h2>Arkadaş Ekle</h2>
             <div class="input-group">
