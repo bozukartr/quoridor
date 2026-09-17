@@ -1,4 +1,5 @@
 import symbol from './quoridor-symbol.svg?raw';
+import { settings } from './settings.js';
 
 let markNumber = 0;
 function brandMark() {
@@ -70,7 +71,7 @@ if (menu) {
         showIntro &&= !sessionStorage.getItem('quoridor.intro.v1') && !localStorage.getItem('quoridor.match.v1');
         sessionStorage.setItem('quoridor.intro.v1', '1');
     } catch { /* Storage restrictions must never block entry. */ }
-    if (showIntro && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    if (showIntro && !settings.get().reducedMotion && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
         const intro = document.createElement('div');
         intro.className = 'launch-screen';
         intro.setAttribute('role', 'dialog');

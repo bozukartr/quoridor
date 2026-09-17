@@ -5,6 +5,7 @@ import vm from 'node:vm';
 
 // Exercise menu controls without starting Firebase or altering the game engine.
 const source = readFileSync(new URL('../menu-ui.js', import.meta.url), 'utf8').replace(/^import symbol.*\n/, 'const symbol = "";\n');
+const menuSource = source.replace(/import \{ settings \}.*\n/, 'const settings = { get: () => ({ reducedMotion: false }) };\n');
 function setup() {
     const nodes = new Map();
     const observations = [];
@@ -34,7 +35,7 @@ function setup() {
         getElementById: id => nodes.get(id),
         querySelectorAll: selector => ({ '[data-mode]': modes, '[data-open-sheet]': openers, '.game-sheet': sheets, '.game-sheet[open]': sheets.filter(s => s.open) })[selector] || [],
     };
-    vm.runInNewContext(source, {
+    vm.runInNewContext(menuSource, {
         document, window: { addEventListener() {} }, location: { search: '' }, URLSearchParams,
         sessionStorage: { getItem: () => '1', setItem() {} }, localStorage: { getItem: () => null },
         MutationObserver: class { constructor(callback) { this.callback = callback; } observe(target) { observations.push({ target, callback: this.callback }); } },
