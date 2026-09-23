@@ -37,3 +37,22 @@ test('retreat from an immediate win is labelled a large mistake', () => {
     assert.equal(report.label, 'Büyük hata');
     assert.equal(winChance(0), 50);
 });
+
+test('deeper search blocks an opponent one move from winning', () => {
+    const state = board();
+    state.players.p1.y = 7;
+    state.players.p2.y = 5;
+    const result = analyzePosition(state, { pid: 'p2', depth: 3, maxNodes: 1200 });
+    assert.equal(result.depth, 3);
+    assert.equal(result.bestAction.type, 'wall');
+    const next = applyEngineAction(state, 'p2', result.bestAction);
+    assert.equal(isWallLegal(state, result.bestAction.x, result.bestAction.y, result.bestAction.orientation), true);
+    assert.equal(next.players.p2.wallsLeft, 7);
+});
+
+test('a tight node budget returns the last complete search depth', () => {
+    const result = analyzePosition(board(), { pid: 'p2', depth: 5, maxNodes: 20 });
+    assert.ok(result.depth < 5);
+    assert.equal(result.bestAction.type, 'move');
+    assert.ok(result.nodes <= 20);
+});

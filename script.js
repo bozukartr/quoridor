@@ -332,6 +332,15 @@ function setupEventListeners() {
     document.getElementById('restart-btn').addEventListener('click', returnToMenu); // Main Menu
     document.getElementById('rematch-btn').addEventListener('click', resetRoom); // Rematch
     document.getElementById('analyze-btn').addEventListener('click', openMatchAnalysis);
+    document.getElementById('analysis-prev').addEventListener('click', () => showAnalysisPosition(analysisSelection - 1));
+    document.getElementById('analysis-next').addEventListener('click', () => showAnalysisPosition(analysisSelection + 1));
+    document.addEventListener('keydown', event => {
+        if (document.getElementById('analysis-panel').hidden) return;
+        if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+            event.preventDefault();
+            showAnalysisPosition(analysisSelection + (event.key === 'ArrowRight' ? 1 : -1));
+        }
+    });
     document.getElementById('analysis-close').addEventListener('click', () => {
         document.getElementById('analysis-panel').hidden = true;
         analysisRun++;
@@ -1240,7 +1249,7 @@ function aiTakeTurn() {
         ? { ...snapshot, players: { ...snapshot.players, [AI_PID]: { ...snapshot.players[AI_PID], wallsLeft: snapshot.players[AI_PID].wallsLeft + 1 } } }
         : snapshot;
     const main = STATE.aiLevel === 'hard' && !snapshot.activeEffects?.[AI_PID]?.chaos && ['move', 'wall'].includes(chosen.main?.type)
-        ? (analyzePosition(searchState, { pid: AI_PID, depth: 2, maxNodes: 1200 }).bestAction || chosen.main)
+        ? (analyzePosition(searchState, { pid: AI_PID, depth: 3, maxNodes: 1200 }).bestAction || chosen.main)
         : chosen.main;
 
     if (!main) {
@@ -2344,39 +2353,56 @@ function renderAnalysisBoard(state) {
         board.append(pawn);
     }
 }
-function renderAnalysisEntry(index, result) {
-    const entry = analysisHistory[index];
-    const after = analysisHistory[index + 1];
-    const self = STATE.playerId;
-    const chance = winChance(evaluatePosition(after.state, self));
-    const card = document.createElement('button');
-    card.type = 'button';
-    card.className = 'analysis-turn';
-    const actor = entry.turn === self ? 'Sen' : (STATE.vsAI ? 'Bilgisayar' : 'Rakip');
-    const quality = result?.label || 'Özel hamle';
-    card.innerHTML = `<span class="analysis-turn-number">${index + 1}</span><span class="analysis-turn-info"><strong></strong><small></small></span><span class="analysis-turn-grade"></span>`;
-    card.querySelector('strong').textContent = `${actor} · ${quality}`;
-    card.querySelector('small').textContent = result ? `Öneri: ${formatEngineAction(result.bestAction)}` : 'Güç veya özel durum';
-    card.querySelector('.analysis-turn-grade').textContent = `${chance}%`;
-    card.addEventListener('click', () => {
-        document.querySelectorAll('.analysis-turn.selected').forEach(el => el.classList.remove('selected'));
-        card.classList.add('selected');
-        document.getElementById('analysis-chance').textContent = `${chance}%`;
-        document.getElementById('analysis-chance-bar').style.width = `${chance}%`;
-        renderAnalysisBoard(after.state);
-        document.getElementById('analysis-detail').textContent = result
-            ? `${actor}: ${quality.toLowerCase()}. Önerilen hamle: ${formatEngineAction(result.bestAction)}. Tahmini konum kaybı: ${Math.round(result.loss)} puan.`
-            : `${actor}: Bu turda özel güç veya birden fazla değişiklik kullanıldı.`;
-    });
-    return card;
+let analysisSelection = 0;
+let analysisReports = [];
+
+function actualAnalysisAction(before, after, pid) {
+    const a = before.players[pid], b = after.players[pid];
+    if (a.x !== b.x || a.y !== b.y) return formatEngineAction({ type: 'move', to: b });
+    const wall = after.walls.find(w => !before.walls.some(o => o.x === w.x && o.y === w.y && o.type === w.type));
+    return wall ? formatEngineAction({ type: 'wall', x: wall.x, y: wall.y, orientation: wall.type }) : 'Özel hamle';
 }
+
+function showAnalysisPosition(index) {
+    if (!analysisHistory.length) return;
+    analysisSelection = Math.max(0, Math.min(index, analysisHistory.length - 1));
+    const total = analysisHistory.length - 1;
+    const state = analysisHistory[analysisSelection].state;
+    const chance = winChance(evaluatePosition(state, STATE.playerId));
+    renderAnalysisBoard(state);
+    document.getElementById('analysis-chance').textContent = `${chance}%`;
+    document.getElementById('analysis-chance-bar').style.width = `${chance}%`;
+    document.getElementById('analysis-step').textContent = `${analysisSelection} / ${total}`;
+    document.getElementById('analysis-prev').disabled = analysisSelection === 0;
+    document.getElementById('analysis-next').disabled = analysisSelection === total;
+    const count = document.getElementById('analysis-move-count');
+    const title = document.getElementById('analysis-move-title');
+    const detail = document.getElementById('analysis-detail');
+    if (analysisSelection === 0) {
+        count.textContent = 'BAŞLANGIÇ KONUMU';
+        title.textContent = 'Maç başlangıcı';
+        detail.textContent = 'Hamleleri oklarla incele.';
+        return;
+    }
+    const before = analysisHistory[analysisSelection - 1];
+    const pid = before.turn;
+    const actor = pid === STATE.playerId ? 'Sen' : (STATE.vsAI ? 'Bilgisayar' : 'Rakip');
+    const report = analysisReports[analysisSelection - 1];
+    count.textContent = `${analysisSelection}. HAMLE · ${actor.toLocaleUpperCase('tr-TR')}`;
+    title.textContent = actualAnalysisAction(before.state, state, pid);
+    detail.textContent = report === undefined ? 'Motor bu hamleyi değerlendiriyor…' : report
+        ? `${report.label} · Öneri: ${formatEngineAction(report.bestAction)} · Kayıp: ${Math.round(report.loss)} puan · Derinlik: ${report.depth}`
+        : 'Güç veya özel durum; konum puanına dahil değil.';
+}
+
 function openMatchAnalysis() {
     const panel = document.getElementById('analysis-panel');
-    const list = document.getElementById('analysis-turns');
     panel.hidden = false;
-    list.replaceChildren();
     const total = Math.max(0, analysisHistory.length - 1);
-    document.getElementById('analysis-progress').textContent = total ? `${total} konum inceleniyor…` : 'Bu maç için hamle kaydı bulunamadı.';
+    analysisReports = Array(total).fill(undefined);
+    document.getElementById('analysis-progress').textContent = total ? `0 / ${total} incelendi` : 'Hamle kaydı bulunamadı';
+    if (!analysisHistory.length) return;
+    showAnalysisPosition(0);
     if (!total) return;
     const run = ++analysisRun;
     if (analysisWorker) analysisWorker.terminate();
@@ -2387,11 +2413,10 @@ function openMatchAnalysis() {
     let index = 0;
     const complete = result => {
         if (run !== analysisRun || panel.hidden) return;
-        const card = renderAnalysisEntry(index, result);
-        list.append(card);
-        if (index === 0) card.click();
+        analysisReports[index] = result;
         index++;
-        document.getElementById('analysis-progress').textContent = `${index} / ${total} konum incelendi`;
+        document.getElementById('analysis-progress').textContent = `${index} / ${total} incelendi`;
+        if (analysisSelection === index) showAnalysisPosition(index);
         setTimeout(next, 0);
     };
     if (analysisWorker) {
@@ -2408,7 +2433,7 @@ function openMatchAnalysis() {
     const next = () => {
         if (run !== analysisRun || panel.hidden) return;
         if (index >= total) {
-            document.getElementById('analysis-progress').textContent = `${total} konum incelendi · Motor: derinlik ${analysisWorker ? 3 : 2}`;
+            document.getElementById('analysis-progress').textContent = `${total} hamle incelendi`;
             analysisWorker?.terminate();
             analysisWorker = null;
             return;
@@ -2423,7 +2448,7 @@ function openMatchAnalysis() {
         if (analysisWorker) {
             analysisWorker.postMessage({ before: before.state, after: after.state, pid, index, run });
         } else {
-            complete(classifyMove(before.state, after.state, pid, null, { depth: 2, maxNodes: 900 }));
+            complete(classifyMove(before.state, after.state, pid, null, { depth: 3, maxNodes: 1200 }));
         }
     };
     setTimeout(next, 0);

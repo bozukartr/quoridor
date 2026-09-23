@@ -17,9 +17,10 @@ function harness() {
         if (elements.has(id)) return elements.get(id);
         const classes = new Set();
         const el = {
-            value: '', textContent: '', innerHTML: '', style: {},
+            value: '', textContent: '', innerHTML: '', style: { setProperty() {} }, children: [],
             classList: { add: x => classes.add(x), remove: x => classes.delete(x), contains: x => classes.has(x), toggle() {} },
-            addEventListener() {}, querySelector: x => element(id + x)
+            addEventListener() {}, querySelector: x => element(id + x),
+            append(child) { this.children.push(child); }, replaceChildren() { this.children = []; }
         };
         elements.set(id, el);
         return el;
@@ -37,7 +38,7 @@ function harness() {
         localStorage: storage, URLSearchParams, settings: createSettings(storage), recordFinishedMatch() {},
         serverTimestamp: () => Date.now(),
         db: {}, app: {}, auth: { currentUser: { uid: 'test-player' } },
-        document: { getElementById: element, addEventListener() {}, querySelectorAll: () => [] },
+        document: { getElementById: element, createElement: () => element(`created-${Math.random()}`), addEventListener() {}, querySelectorAll: () => [] },
         window: { addEventListener() {}, location: { search: '' } }, navigator: {},
         Audio: class { play() { return Promise.resolve(); } },
         requestAnimationFrame() {},
@@ -62,7 +63,7 @@ function harness() {
         .replace("new URL('./analysis-worker.js', import.meta.url)", "'analysis-worker.js'");
     source += `\ninitRenderer = () => {}; showToast = () => {}; startConfetti = () => {}; stopConfetti = () => {};
     globalThis.game = { STATE, startAIGame, startGame, resetRoom, sendMove, listenGameLoop, restoreOnlineRoom, roomUpdate, tryMove,
-        recordAnalysisSnapshot, analysisHistory: () => analysisHistory };`;
+        recordAnalysisSnapshot, analysisHistory: () => analysisHistory, openMatchAnalysis, showAnalysisPosition };`;
     vm.runInContext(source, context);
     return { game: context.game, room, histories, pending, elements, storage };
 }
@@ -185,4 +186,24 @@ test('analysis timeline records board changes once and resets for a rematch', as
     await game.resetRoom();
     await flush();
     assert.equal(game.analysisHistory().length, 1);
+});
+
+test('analysis arrow navigation updates the board without a scrolling turn list', async () => {
+    const { game, elements } = harness();
+    game.startAIGame('easy');
+    await flush();
+    const next = structuredClone(game.STATE.roomData);
+    next.boardState.p1.y = 1;
+    next.turn = 'p2';
+    game.recordAnalysisSnapshot(next);
+    game.analysisHistory()[0].turn = 'p1';
+    game.openMatchAnalysis();
+    assert.equal(elements.get('analysis-step').textContent, '0 / 1');
+    assert.equal(elements.get('analysis-prev').disabled, true);
+    assert.equal(elements.get('analysis-board').children.length, 65);
+    game.showAnalysisPosition(1);
+    assert.equal(elements.get('analysis-step').textContent, '1 / 1');
+    assert.equal(elements.get('analysis-next').disabled, true);
+    assert.match(elements.get('analysis-move-title').textContent, /Taş/);
+    assert.equal(elements.get('analysis-board').children.length, 65);
 });
