@@ -183,17 +183,25 @@
         </div>
 
         <!-- Game Over Screen -->
-        <div id="game-over-screen" class="screen">
+        <div id="game-over-screen" class="screen" role="region" aria-labelledby="result-title">
             <div class="result-backdrop"></div>
             <canvas id="confetti-canvas"></canvas>
             <div class="result-container">
-                <div class="result-icon">Build Icon Here</div>
-                <h1 class="result-title">KAZANDIN!</h1>
-                <p class="result-message">Muhteşem bir strateji ile rakibi alt ettin.</p>
+                <div class="result-topline"><span class="result-brand">QUORIDOR</span><span class="result-mode">MAÇ SONU</span></div>
+                <div class="result-hero">
+                    <div class="result-icon" aria-hidden="true"><i class="fa-solid fa-trophy"></i></div>
+                    <span class="result-eyebrow">MAÇ TAMAMLANDI</span>
+                    <h1 id="result-title" class="result-title">ZAFER</h1>
+                    <p class="result-message">Hedefe ilk sen ulaştın.</p>
+                </div>
+                <div class="result-scoreboard" aria-label="Maç sonucu">
+                    <div class="result-player"><span class="result-avatar result-avatar-self"><i class="fa-solid fa-chess-pawn" aria-hidden="true"></i></span><span class="result-player-name" id="result-self-name">Sen</span><span class="result-player-label">SEN</span></div>
+                    <div class="result-versus"><span>VS</span><span class="result-scoreline" id="result-scoreline">1 — 0</span></div>
+                    <div class="result-player"><span class="result-avatar result-avatar-opponent"><i class="fa-solid fa-chess-pawn" aria-hidden="true"></i></span><span class="result-player-name" id="result-opponent-name">Rakip</span><span class="result-player-label">RAKİP</span></div>
+                </div>
                 <div class="result-actions">
-                    <button id="rematch-btn" class="btn primary"><i class="fa-solid fa-rotate-right"></i> Tekrar
-                        Oyna</button>
-                    <button id="restart-btn" class="btn secondary"><i class="fa-solid fa-house"></i> Ana Menü</button>
+                    <button id="rematch-btn" class="result-rematch"><i class="fa-solid fa-rotate-right" aria-hidden="true"></i> Tekrar Oyna <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button>
+                    <button id="restart-btn" class="result-home"><i class="fa-solid fa-house" aria-hidden="true"></i> Ana menüye dön</button>
                 </div>
             </div>
         </div>

@@ -1129,14 +1129,19 @@ function endGame(winnerId) {
         screen.classList.add(isWin ? 'victory' : 'defeat');
 
         // Update Content
-        title.textContent = isWin ? "ZAFER!" : "YENİLGİ...";
+        title.textContent = isWin ? "ZAFER" : "YENİLGİ";
         msg.textContent = isWin
-            ? "Muhteşem bir strateji ile rakibi alt ettin."
-            : "Bu sefer şans rakipten yanaydı. Pes etme!";
-        icon.innerHTML = isWin ? '<i class="fa-solid fa-trophy"></i>' : '<i class="fa-solid fa-skull"></i>';
+            ? "Hedefe ilk sen ulaştın. Harika bir oyun!"
+            : "Bu maç rakibindi. Yeni bir oyun seni bekliyor.";
+        icon.innerHTML = isWin ? '<i class="fa-solid fa-trophy"></i>' : '<i class="fa-solid fa-chess-pawn"></i>';
+        screen.querySelector('.result-mode').textContent = STATE.vsAI ? 'TEK OYUNCU' : 'ARKADAŞINLA';
+        screen.querySelector('#result-self-name').textContent = STATE.roomData?.[STATE.playerId] || document.getElementById('username-input').value || 'Sen';
+        const opponentId = STATE.playerId === 'p1' ? 'p2' : 'p1';
+        screen.querySelector('#result-opponent-name').textContent = STATE.vsAI ? 'Bilgisayar' : (STATE.roomData?.[opponentId] || 'Rakip');
+        screen.querySelector('#result-scoreline').textContent = isWin ? '1 — 0' : '0 — 1';
 
         if (isWin) {
-            startConfetti();
+            if (!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) startConfetti();
             sounds.play('win');
         } else {
             sounds.play('lose');
