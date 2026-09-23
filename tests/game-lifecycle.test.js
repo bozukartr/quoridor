@@ -8,6 +8,7 @@ import * as session from '../match-session.js';
 import * as powers from '../powerups.js';
 import * as ai from '../ai.js';
 import * as engine from '../analysis-engine.js';
+import * as insights from '../review-insights.js';
 import { createSettings } from '../settings.js';
 import * as online from '../online-match.js';
 
@@ -19,7 +20,7 @@ function harness() {
         const el = {
             value: '', textContent: '', innerHTML: '', style: { setProperty() {} }, children: [],
             classList: { add: x => classes.add(x), remove: x => classes.delete(x), contains: x => classes.has(x), toggle() {} },
-            addEventListener() {}, querySelector: x => element(id + x),
+            addEventListener() {}, setAttribute() {}, querySelector: x => element(id + x),
             append(child) { this.children.push(child); }, replaceChildren() { this.children = []; }
         };
         elements.set(id, el);
@@ -33,7 +34,7 @@ function harness() {
     const stored = new Map();
     const storage = { getItem: key => stored.get(key), setItem: (key,value) => stored.set(key,value), removeItem: key => stored.delete(key) };
     const context = vm.createContext({
-        ...session, ...online, ...powers, ...ai, ...engine, aiValidMoves: ai.getValidMoves, LocalRoom,
+        ...session, ...online, ...powers, ...ai, ...engine, ...insights, aiValidMoves: ai.getValidMoves, LocalRoom,
         crypto: webcrypto, structuredClone, console, Date, Math,
         localStorage: storage, URLSearchParams, settings: createSettings(storage), recordFinishedMatch() {},
         serverTimestamp: () => Date.now(),
@@ -63,7 +64,8 @@ function harness() {
         .replace("new URL('./analysis-worker.js', import.meta.url)", "'analysis-worker.js'");
     source += `\ninitRenderer = () => {}; showToast = () => {}; startConfetti = () => {}; stopConfetti = () => {};
     globalThis.game = { STATE, startAIGame, startGame, resetRoom, sendMove, listenGameLoop, restoreOnlineRoom, roomUpdate, tryMove,
-        recordAnalysisSnapshot, analysisHistory: () => analysisHistory, openMatchAnalysis, showAnalysisPosition };`;
+        recordAnalysisSnapshot, analysisHistory: () => analysisHistory, openMatchAnalysis, showAnalysisPosition,
+        setAnalysisReports: reports => analysisReports = reports, toggleAnalysisPreview };`;
     vm.runInContext(source, context);
     return { game: context.game, room, histories, pending, elements, storage };
 }
@@ -201,9 +203,30 @@ test('analysis arrow navigation updates the board without a scrolling turn list'
     assert.equal(elements.get('analysis-step').textContent, '0 / 1');
     assert.equal(elements.get('analysis-prev').disabled, true);
     assert.equal(elements.get('analysis-board').children.length, 65);
+    assert.equal(elements.get('analysis-graph').children.length, 2);
     game.showAnalysisPosition(1);
     assert.equal(elements.get('analysis-step').textContent, '1 / 1');
     assert.equal(elements.get('analysis-next').disabled, true);
     assert.match(elements.get('analysis-move-title').textContent, /Taş/);
+    assert.equal(elements.get('analysis-board').children.length, 65);
+});
+
+test('review reveals the suggested move on the previous position and returns to the game', async () => {
+    const { game, elements } = harness();
+    game.startAIGame('easy');
+    await flush();
+    const next = structuredClone(game.STATE.roomData);
+    next.boardState.p1.y = 1;
+    next.turn = 'p2';
+    game.recordAnalysisSnapshot(next);
+    game.analysisHistory()[0].turn = 'p1';
+    game.openMatchAnalysis();
+    game.setAnalysisReports([{ bestAction: { type: 'move', to: { x: 3, y: 1 } }, label: 'En iyi', loss: 0, depth: 4 }]);
+    game.showAnalysisPosition(1);
+    assert.equal(elements.get('analysis-board').children.length, 65);
+    game.toggleAnalysisPreview();
+    assert.equal(elements.get('analysis-board').children.length, 66);
+    assert.equal(elements.get('analysis-best').textContent, 'Oyuna dön');
+    game.toggleAnalysisPreview();
     assert.equal(elements.get('analysis-board').children.length, 65);
 });

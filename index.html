@@ -206,14 +206,17 @@
                 </div>
             </div>
             <section id="analysis-panel" class="analysis-panel" aria-label="Maç analizi" hidden>
-                <header class="analysis-header"><button id="analysis-close" type="button" aria-label="Sonuca dön"><i class="fa-solid fa-arrow-left"></i></button><div><small>QUORIDOR MOTORU</small><h2>Maç analizi</h2></div></header>
+                <header class="analysis-header"><button id="analysis-close" type="button" aria-label="Sonuca dön"><i class="fa-solid fa-arrow-left"></i></button><div><small>QUORIDOR MOTORU</small><h2>Maç analizi</h2></div><button id="analysis-summary-toggle" type="button" aria-label="Maç özeti" aria-expanded="false"><i class="fa-solid fa-chart-simple"></i></button></header>
                 <div class="analysis-stage">
                     <div class="analysis-evaluation"><span>TAHMİNİ ÜSTÜNLÜĞÜN</span><strong id="analysis-chance">50%</strong><div class="analysis-meter"><div id="analysis-chance-bar" style="width:50%"></div></div></div>
                     <div id="analysis-board" class="analysis-board" role="img" aria-label="Seçilen hamle sonrası tahta"></div>
-                    <div class="analysis-position"><span id="analysis-move-count">BAŞLANGIÇ</span><strong id="analysis-move-title">Maç başlangıcı</strong><p id="analysis-detail">Hamleleri oklarla incele.</p></div>
+                    <div class="analysis-position"><span id="analysis-move-count">BAŞLANGIÇ</span><strong id="analysis-move-title">Maç başlangıcı</strong><p id="analysis-detail">Hamleleri oklarla incele.</p><button id="analysis-best" type="button" hidden>Öneriyi tahtada göster</button></div>
                 </div>
+                <div id="analysis-graph" class="analysis-graph" role="group" aria-label="Maç boyunca konum üstünlüğü"></div>
                 <div class="analysis-navigation"><button id="analysis-prev" type="button" aria-label="Önceki hamle"><i class="fa-solid fa-chevron-left"></i></button><div><span id="analysis-step">0 / 0</span><small id="analysis-progress" role="status" aria-live="polite">Hazırlanıyor…</small></div><button id="analysis-next" type="button" aria-label="Sonraki hamle"><i class="fa-solid fa-chevron-right"></i></button></div>
+                <button id="analysis-next-key" class="analysis-next-key" type="button" hidden><span id="analysis-next-key-label">Sonraki kritik hamle</span> <i class="fa-solid fa-forward-step"></i></button>
                 <p class="analysis-note">Tahmini konum puanı gerçek kazanma olasılığı veya Elo değildir. Güçler ve süre değerlendirmeye dahil değildir.</p>
+                <div id="analysis-summary" class="analysis-summary" hidden><div class="analysis-summary-card"><button id="analysis-summary-close" type="button" aria-label="Özeti kapat"><i class="fa-solid fa-xmark"></i></button><small>MAÇ ÖZETİ</small><h3>Hamle değerlendirmesi</h3><div class="analysis-summary-stats"><div><strong id="analysis-stat-best">0</strong><span>En iyi</span></div><div><strong id="analysis-stat-good">0</strong><span>İyi</span></div><div><strong id="analysis-stat-mistakes">0</strong><span>Hata</span></div></div><p id="analysis-summary-status">Motor hamleleri inceliyor…</p><p class="analysis-summary-disclaimer">Bu sayılar yalnızca incelenen kendi hamlelerini gösterir; doğruluk veya Elo puanı değildir.</p></div></div>
             </section>
         </div>
     </div>
