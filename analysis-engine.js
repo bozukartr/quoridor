@@ -1,4 +1,5 @@
-// Shared, deterministic Quoridor search. Power-ups are scored by the live AI separately.
+// Deterministic Quoridor search shared by the bot and match review.
+// Special power-ups and the turn clock remain outside this positional model.
 import { distanceToGoal, getValidMoves, goalRowFor, isWallLegal } from './ai.js';
 
 const other = pid => pid === 'p1' ? 'p2' : 'p1';
@@ -10,8 +11,9 @@ export function evaluatePosition(state, pid = 'p1') {
     if (state.players[foe].y === goalRowFor(foe, state.rows)) return -10000;
     const own = distanceToGoal(state, state.players[pid].x, state.players[pid].y, goalRowFor(pid, state.rows));
     const rival = distanceToGoal(state, state.players[foe].x, state.players[foe].y, goalRowFor(foe, state.rows));
-    // Shortest paths dominate, with a smaller premium for the remaining wall reserve.
-    return clamp((rival - own) * 110 + ((state.players[pid].wallsLeft || 0) - (state.players[foe].wallsLeft || 0)) * 18, -2000, 2000);
+    // Wall reserve matters most while both sides still have a long route.
+    const wallWeight = clamp(Math.min(own, rival) * 3, 8, 24);
+    return clamp((rival - own) * 115 + ((state.players[pid].wallsLeft || 0) - (state.players[foe].wallsLeft || 0)) * wallWeight, -2000, 2000);
 }
 
 export function winChance(score) {
@@ -28,64 +30,101 @@ export function applyEngineAction(state, pid, action) {
         ? [...state.walls, { x: action.x, y: action.y, type: action.orientation }] : state.walls };
 }
 
-export function legalEngineActions(state, pid) {
-    const moves = getValidMoves(state, pid).map(to => ({ type: 'move', to }));
-    if (!state.players[pid].wallsLeft || state.frozenPlayer === pid) return moves;
-    const rival = state.players[other(pid)];
-    const own = state.players[pid];
-    const walls = [];
-    // A wall away from both pawns' routes is unlikely to affect this turn.
-    for (let x = 0; x < state.cols - 1; x++) for (let y = 0; y < state.rows - 1; y++) {
-        if (Math.min(Math.abs(x - rival.x) + Math.abs(y - rival.y),
-            Math.abs(x - own.x) + Math.abs(y - own.y)) > 4) continue;
-        for (const orientation of ['horizontal', 'vertical']) {
-            if (isWallLegal(state, x, y, orientation)) walls.push({ type: 'wall', x, y, orientation });
-        }
-    }
-    const before = evaluatePosition(state, pid);
-    walls.sort((a, b) => evaluatePosition(applyEngineAction(state, pid, b), pid)
-        - evaluatePosition(applyEngineAction(state, pid, a), pid));
-    return [...moves, ...walls.slice(0, 8).filter(a => evaluatePosition(applyEngineAction(state, pid, a), pid) >= before - 75)];
+function stateKey(state) {
+    const a = state.players.p1, b = state.players.p2;
+    return `${a.x},${a.y},${a.wallsLeft}|${b.x},${b.y},${b.wallsLeft}|${state.frozenPlayer || ''}|${state.walls.map(w => `${w.x},${w.y},${w.type[0]}`).sort().join(';')}`;
 }
 
-export function analyzePosition(state, { pid = 'p1', depth = 2, maxNodes = 1200 } = {}) {
-    let nodes = 0;
-    const perspective = pid;
-    const limit = clamp(Math.floor(depth), 1, 4);
-    const search = (position, turn, remaining, alpha, beta) => {
-        nodes++;
-        const terminal = Math.abs(evaluatePosition(position, perspective)) >= 9000;
-        if (remaining === 0 || terminal || nodes >= maxNodes) return evaluatePosition(position, perspective);
-        const actions = legalEngineActions(position, turn);
-        if (!actions.length) return evaluatePosition(position, perspective);
-        const maximizing = turn === perspective;
-        const ranked = actions.map(action => ({ action, next: applyEngineAction(position, turn, action) }));
-        ranked.sort((a, b) => (evaluatePosition(b.next, perspective) - evaluatePosition(a.next, perspective)) * (maximizing ? 1 : -1));
-        let best = maximizing ? -Infinity : Infinity;
-        for (const entry of ranked.slice(0, remaining > 1 ? 8 : 12)) {
-            const score = search(entry.next, other(turn), remaining - 1, alpha, beta);
-            best = maximizing ? Math.max(best, score) : Math.min(best, score);
-            if (maximizing) alpha = Math.max(alpha, best); else beta = Math.min(beta, best);
-            if (beta <= alpha || nodes >= maxNodes) break;
+function candidateActions(state, pid, scorePosition) {
+    const moves = getValidMoves(state, pid).map(to => ({ type: 'move', to }));
+    if (!state.players[pid].wallsLeft || state.frozenPlayer === pid) return moves;
+    const rival = state.players[other(pid)], own = state.players[pid];
+    const before = scorePosition(state, pid);
+    const walls = [];
+    for (let x = 0; x < state.cols - 1; x++) for (let y = 0; y < state.rows - 1; y++) {
+        if (Math.min(Math.abs(x - rival.x) + Math.abs(y - rival.y),
+            Math.abs(x - own.x) + Math.abs(y - own.y)) > 5) continue;
+        for (const orientation of ['horizontal', 'vertical']) {
+            if (!isWallLegal(state, x, y, orientation)) continue;
+            const action = { type: 'wall', x, y, orientation };
+            const score = scorePosition(applyEngineAction(state, pid, action), pid);
+            if (score >= before - 115) walls.push({ action, score });
         }
-        return best;
-    };
-    const options = legalEngineActions(state, pid).map(action => ({ action, next: applyEngineAction(state, pid, action) }));
-    options.sort((a, b) => evaluatePosition(b.next, pid) - evaluatePosition(a.next, pid));
-    let bestAction = null, bestScore = -Infinity;
-    for (const option of options.slice(0, 14)) {
-        const score = search(option.next, other(pid), limit - 1, -Infinity, Infinity);
-        if (score > bestScore) { bestScore = score; bestAction = option.action; }
-        if (nodes >= maxNodes) break;
     }
-    if (!bestAction) bestScore = evaluatePosition(state, pid);
-    return { bestAction, score: bestScore, winChance: winChance(bestScore), nodes, depth: limit };
+    walls.sort((a, b) => b.score - a.score || a.action.y - b.action.y || a.action.x - b.action.x);
+    return [...moves, ...walls.slice(0, 8).map(entry => entry.action)];
+}
+
+export function legalEngineActions(state, pid) {
+    return candidateActions(state, pid, evaluatePosition);
+}
+
+export function analyzePosition(state, { pid = 'p1', depth = 3, maxNodes = 1800 } = {}) {
+    const targetDepth = clamp(Math.floor(depth), 1, 5);
+    const budget = Math.max(1, Math.floor(maxNodes));
+    let nodes = 0;
+    const evaluationCache = new Map(), actionCache = new Map(), transpositions = new Map();
+    const scorePosition = (position, turn) => {
+        const key = `${stateKey(position)}|${turn}`;
+        if (!evaluationCache.has(key)) evaluationCache.set(key, evaluatePosition(position, turn));
+        return evaluationCache.get(key);
+    };
+    const actionsFor = (position, turn) => {
+        const key = `${stateKey(position)}|${turn}`;
+        if (!actionCache.has(key)) actionCache.set(key, candidateActions(position, turn, scorePosition));
+        return actionCache.get(key);
+    };
+    const search = (position, turn, remaining, alpha, beta) => {
+        if (nodes >= budget) return { score: scorePosition(position, turn), complete: false };
+        nodes++;
+        const staticScore = scorePosition(position, turn);
+        if (remaining === 0 || Math.abs(staticScore) >= 9000) return { score: staticScore, complete: true };
+        const key = `${stateKey(position)}|${turn}|${remaining}`;
+        if (transpositions.has(key)) return { score: transpositions.get(key), complete: true };
+        const ranked = actionsFor(position, turn).map(action => ({ action, position: applyEngineAction(position, turn, action) }));
+        ranked.sort((a, b) => scorePosition(b.position, turn) - scorePosition(a.position, turn));
+        if (!ranked.length) return { score: staticScore, complete: true };
+        let best = -Infinity, complete = true, cutoff = false;
+        for (const entry of ranked.slice(0, remaining > 1 ? 9 : 12)) {
+            const reply = search(entry.position, other(turn), remaining - 1, -beta, -alpha);
+            if (!reply.complete) complete = false;
+            best = Math.max(best, -reply.score);
+            alpha = Math.max(alpha, best);
+            if (alpha >= beta) { cutoff = true; break; }
+            if (nodes >= budget) { complete = false; break; }
+        }
+        if (complete && !cutoff) transpositions.set(key, best);
+        return { score: best, complete };
+    };
+    const root = actionsFor(state, pid).map(action => ({ action, position: applyEngineAction(state, pid, action) }));
+    root.sort((a, b) => scorePosition(b.position, pid) - scorePosition(a.position, pid));
+    let result = { bestAction: root[0]?.action || null, score: root[0] ? scorePosition(root[0].position, pid) : scorePosition(state, pid), depth: 0 };
+    if (!root.length) return { ...result, winChance: winChance(result.score), nodes };
+    for (let ply = 1; ply <= targetDepth && nodes < budget; ply++) {
+        let best = null, bestScore = -Infinity, complete = true, alpha = -Infinity;
+        // Previous principal move first improves pruning in the next iteration.
+        root.sort((a, b) => Number(b.action === result.bestAction) - Number(a.action === result.bestAction)
+            || scorePosition(b.position, pid) - scorePosition(a.position, pid));
+        for (const entry of root.slice(0, 14)) {
+            const reply = search(entry.position, other(pid), ply - 1, -Infinity, -alpha);
+            if (!reply.complete) complete = false;
+            const score = -reply.score;
+            if (score > bestScore) { bestScore = score; best = entry.action; }
+            alpha = Math.max(alpha, bestScore);
+            if (nodes >= budget) { complete = false; break; }
+        }
+        if (!complete) break;
+        result = { bestAction: best, score: bestScore, depth: ply };
+    }
+    return { ...result, winChance: winChance(result.score), nodes };
 }
 
 export function classifyMove(before, after, pid, chosen, options = {}) {
     const best = analyzePosition(before, { pid, ...options });
-    const played = -analyzePosition(after, { pid: other(pid), depth: Math.max(1, best.depth - 1), maxNodes: options.maxNodes || 900 }).score;
+    const reply = analyzePosition(after, { pid: other(pid), depth: Math.max(1, best.depth - 1), maxNodes: options.maxNodes || 900 });
+    const played = -reply.score;
     const loss = Math.max(0, best.score - played);
     return { bestAction: best.bestAction, loss, label: loss < 35 ? 'En iyi' : loss < 110 ? 'İyi' : loss < 230 ? 'Hata' : 'Büyük hata',
-        beforeChance: winChance(evaluatePosition(before, pid)), afterChance: winChance(played), chosen };
+        beforeChance: winChance(evaluatePosition(before, pid)), afterChance: winChance(played), chosen,
+        depth: best.depth, nodes: best.nodes + reply.nodes };
 }
