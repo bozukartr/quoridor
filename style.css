@@ -1972,3 +1972,32 @@ header {
 .analysis-header button:focus-visible, .analysis-navigation button:focus-visible, .analysis-graph-step:focus-visible, .analysis-review-start:focus-visible, .analysis-position button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 @keyframes reviewCardIn { from { opacity: 0; transform: translateY(20px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
 @media (prefers-reduced-motion: reduce) { .analysis-summary-card { animation: none; } .analysis-stage .analysis-board, .analysis-position { transition: none; } }
+
+/* Review controls stay inside the viewport; only the compact move ribbon scrolls. */
+.analysis-move-strip { display: flex; gap: 6px; flex: none; width: min(100%, 480px); min-height: 34px; margin: 6px auto 0; overflow-x: auto; scrollbar-width: none; scroll-snap-type: x proximity; }
+.analysis-move-strip::-webkit-scrollbar { display: none; }
+.analysis-move-chip { flex: none; max-width: 150px; padding: 5px 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 1px solid #38525d; border-radius: 9px; background: #1c303a; color: #afc4cd; font: inherit; font-size: 11px; font-weight: 700; scroll-snap-align: center; }
+.analysis-move-chip.selected { color: #18352c; background: #a7edca; border-color: #a7edca; }
+.analysis-move-chip.mistake:not(.selected) { color: #ffc6a8; border-color: #9a6657; }
+.analysis-review-actions, .analysis-retry-controls { display: flex; gap: 6px; align-items: center; justify-content: center; width: min(100%, 480px); margin: 5px auto 0; }
+.analysis-review-actions[hidden], .analysis-retry-controls[hidden] { display: none; }
+.analysis-review-actions button, .analysis-retry-controls button { flex: 1; min-height: 34px; border: 1px solid #45616b; border-radius: 10px; background: #223b46; color: #e1f1f1; font: inherit; font-size: 11px; font-weight: 750; touch-action: manipulation; }
+.analysis-review-actions button[hidden], .analysis-retry-controls button[hidden] { display: none; }
+.analysis-review-actions button:disabled { opacity: .4; }
+.analysis-retry-controls button.active { background: #a7edca; color: #17372d; }
+.analysis-retry-target { position: absolute; z-index: 7; width: calc(68% / var(--board-cols)); aspect-ratio: 1; transform: translate(-50%,-50%); border: 2px solid #b5f8d3; border-radius: 50%; background: rgba(125,239,172,.38); box-shadow: 0 0 13px #64dca1; }
+.analysis-played-from, .analysis-played-to { position: absolute; z-index: 4; width: calc(78% / var(--board-cols)); aspect-ratio: 1; transform: translate(-50%,-50%); border: 3px solid #baf8cd; border-radius: 50%; pointer-events: none; }
+.analysis-played-from { border-style: dashed; opacity: .65; }
+.analysis-played-to { box-shadow: 0 0 14px #86eeb7; }
+.analysis-played-from.mistake, .analysis-played-to.mistake { border-color: #ffa286; box-shadow: 0 0 14px #ef886e; }
+.analysis-played-wall { position: absolute; z-index: 4; pointer-events: none; border: 2px solid #c0ffdc; border-radius: 4px; background: #89eeba; box-shadow: 0 0 12px #76e2aa; }
+.analysis-played-wall.mistake { border-color: #ffd3b6; background: #f09b78; box-shadow: 0 0 12px #df866a; }
+.analysis-played-wall.horizontal { width: calc(200% / var(--board-cols)); height: 9px; transform: translateY(-50%); }
+.analysis-played-wall.vertical { width: 9px; height: calc(200% / var(--board-rows)); transform: translateX(-50%); }
+.analysis-summary-comparison { display: grid; gap: 3px; margin: 14px 0 6px; }
+.analysis-summary-comparison > div { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 7px; align-items: center; min-height: 36px; padding: 6px 9px; border-radius: 9px; background: rgba(255,255,255,.055); font-size: 12px; }
+.analysis-summary-comparison span { color: #b4c4cd; }
+.analysis-summary-comparison strong { text-align: center; color: #dbf7e8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.analysis-summary-comparison .analysis-comparison-head { background: transparent; font-size: 11px; }
+.analysis-move-chip:focus-visible, .analysis-review-actions button:focus-visible, .analysis-retry-controls button:focus-visible, .analysis-retry-target:focus-visible { outline: 2px solid white; outline-offset: 2px; }
+@media (max-height: 700px) { .analysis-move-strip { min-height: 28px; margin-top: 2px; } .analysis-review-actions button, .analysis-retry-controls button { min-height: 28px; } .analysis-stage .analysis-board { max-height: 41dvh; } }
