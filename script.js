@@ -342,6 +342,7 @@ function setupEventListeners() {
     document.getElementById('analysis-best').addEventListener('click', toggleAnalysisPreview);
     document.getElementById('analysis-summary-toggle').addEventListener('click', () => setAnalysisSummaryVisible(true));
     document.getElementById('analysis-summary-close').addEventListener('click', () => setAnalysisSummaryVisible(false));
+    document.getElementById('analysis-review-start').addEventListener('click', () => setAnalysisSummaryVisible(false));
     document.addEventListener('keydown', event => {
         if (document.getElementById('analysis-panel').hidden) return;
         if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
@@ -2396,6 +2397,14 @@ function renderAnalysisGraph() {
         step.addEventListener('click', () => showAnalysisPosition(index));
         graph.append(step);
     });
+    const overview = document.getElementById('analysis-summary-graph');
+    overview.replaceChildren();
+    analysisTrend.forEach((value, index) => {
+        const bar = document.createElement('span');
+        bar.style.height = `${Math.max(5, value)}%`;
+        bar.className = critical.has(index) ? 'critical' : '';
+        overview.append(bar);
+    });
 }
 
 function updateReviewSummary() {
@@ -2437,6 +2446,7 @@ function showAnalysisPosition(index) {
     if (nextKey !== undefined) document.getElementById('analysis-next-key-label').textContent = `Sonraki kritik hamle · ${nextKey}`;
     document.getElementById('analysis-chance').textContent = `${chance}%`;
     document.getElementById('analysis-chance-bar').style.width = `${chance}%`;
+    document.getElementById('analysis-rail-fill').style.height = `${chance}%`;
     document.getElementById('analysis-step').textContent = `${analysisSelection} / ${total}`;
     document.getElementById('analysis-prev').disabled = analysisSelection === 0;
     document.getElementById('analysis-next').disabled = analysisSelection === total;
@@ -2444,9 +2454,12 @@ function showAnalysisPosition(index) {
     const title = document.getElementById('analysis-move-title');
     const detail = document.getElementById('analysis-detail');
     const bestButton = document.getElementById('analysis-best');
+    const grade = document.getElementById('analysis-grade');
     bestButton.hidden = true;
     bestButton.textContent = 'Öneriyi tahtada göster';
     if (analysisSelection === 0) {
+        grade.textContent = 'KONUM';
+        grade.dataset.grade = 'neutral';
         count.textContent = 'BAŞLANGIÇ KONUMU';
         title.textContent = 'Maç başlangıcı';
         detail.textContent = 'Hamleleri oklarla incele.';
@@ -2456,6 +2469,8 @@ function showAnalysisPosition(index) {
     const pid = before.turn;
     const actor = pid === STATE.playerId ? 'Sen' : (STATE.vsAI ? 'Bilgisayar' : 'Rakip');
     const report = analysisReports[analysisSelection - 1];
+    grade.textContent = report === undefined ? 'İNCELENİYOR' : (report?.label || 'ÖZEL HAMLE').toLocaleUpperCase('tr-TR');
+    grade.dataset.grade = report?.label === 'Hata' || report?.label === 'Büyük hata' ? 'mistake' : 'good';
     bestButton.hidden = !report?.bestAction;
     count.textContent = `${analysisSelection}. HAMLE · ${actor.toLocaleUpperCase('tr-TR')}`;
     title.textContent = actualAnalysisAction(before.state, state, pid);
@@ -2470,7 +2485,11 @@ function openMatchAnalysis() {
     const total = Math.max(0, analysisHistory.length - 1);
     analysisReports = Array(total).fill(undefined);
     analysisTrend = reviewTrend(analysisHistory, STATE.playerId);
-    setAnalysisSummaryVisible(false);
+    document.getElementById('analysis-top-name').textContent = `${STATE.roomData?.p1 || 'Oyuncu 1'}${STATE.playerId === 'p1' ? ' · Sen' : ''}`;
+    document.getElementById('analysis-bottom-name').textContent = `${STATE.roomData?.p2 || 'Oyuncu 2'}${STATE.playerId === 'p2' ? ' · Sen' : ''}`;
+    document.getElementById('analysis-summary-headline').textContent = STATE.roomData?.boardState?.winner === STATE.playerId
+        ? 'Kazandığın yolu keşfet' : 'Bir sonraki oyuna hazırlan';
+    setAnalysisSummaryVisible(true);
     updateReviewSummary();
     document.getElementById('analysis-progress').textContent = total ? `0 / ${total} incelendi` : 'Hamle kaydı bulunamadı';
     if (!analysisHistory.length) return;
