@@ -9,6 +9,7 @@ import * as powers from '../powerups.js';
 import * as ai from '../ai.js';
 import * as engine from '../analysis-engine.js';
 import * as insights from '../review-insights.js';
+import * as variation from '../review-variation.js';
 import { createSettings } from '../settings.js';
 import * as online from '../online-match.js';
 
@@ -34,7 +35,7 @@ function harness() {
     const stored = new Map();
     const storage = { getItem: key => stored.get(key), setItem: (key,value) => stored.set(key,value), removeItem: key => stored.delete(key) };
     const context = vm.createContext({
-        ...session, ...online, ...powers, ...ai, ...engine, ...insights, aiValidMoves: ai.getValidMoves, LocalRoom,
+        ...session, ...online, ...powers, ...ai, ...engine, ...insights, ...variation, aiValidMoves: ai.getValidMoves, LocalRoom,
         crypto: webcrypto, structuredClone, console, Date, Math,
         localStorage: storage, URLSearchParams, settings: createSettings(storage), recordFinishedMatch() {},
         serverTimestamp: () => Date.now(),
@@ -65,7 +66,8 @@ function harness() {
     source += `\ninitRenderer = () => {}; showToast = () => {}; startConfetti = () => {}; stopConfetti = () => {};
     globalThis.game = { STATE, startAIGame, startGame, resetRoom, sendMove, listenGameLoop, restoreOnlineRoom, roomUpdate, tryMove,
         recordAnalysisSnapshot, analysisHistory: () => analysisHistory, openMatchAnalysis, showAnalysisPosition,
-        setAnalysisReports: reports => analysisReports = reports, toggleAnalysisPreview, setAnalysisSummaryVisible };`;
+        setAnalysisReports: reports => analysisReports = reports, toggleAnalysisPreview, setAnalysisSummaryVisible,
+        startAnalysisRetry, tryAnalysisAlternative, startAnalysisLine, showAnalysisLineStep };`;
     vm.runInContext(source, context);
     return { game: context.game, room, histories, pending, elements, storage };
 }
@@ -207,12 +209,56 @@ test('analysis arrow navigation updates the board without a scrolling turn list'
     assert.equal(elements.get('analysis-step').textContent, '0 / 1');
     assert.equal(elements.get('analysis-prev').disabled, true);
     assert.equal(elements.get('analysis-board').children.length, 65);
+    assert.equal(elements.get('analysis-move-strip').children.length, 2);
     assert.equal(elements.get('analysis-graph').children.length, 2);
     game.showAnalysisPosition(1);
     assert.equal(elements.get('analysis-step').textContent, '1 / 1');
     assert.equal(elements.get('analysis-next').disabled, true);
     assert.match(elements.get('analysis-move-title').textContent, /Taş/);
-    assert.equal(elements.get('analysis-board').children.length, 65);
+    assert.equal(elements.get('analysis-board').children.length, 67);
+});
+
+test('retry accepts legal pawn and wall alternatives without changing the match', async () => {
+    const { game, elements } = harness();
+    game.startAIGame('easy');
+    await flush();
+    const next = structuredClone(game.STATE.roomData);
+    next.boardState.p1.y = 1; next.turn = 'p2';
+    game.recordAnalysisSnapshot(next);
+    game.analysisHistory()[0].turn = 'p1';
+    game.openMatchAnalysis();
+    game.setAnalysisReports([{ bestAction: { type: 'move', to: { x: 3, y: 1 } }, label: 'Hata', loss: 150 }]);
+    game.showAnalysisPosition(1);
+    const live = JSON.stringify(game.STATE.roomData);
+    game.startAnalysisRetry();
+    assert.equal(elements.get('analysis-retry-controls').hidden, false);
+    assert.equal(game.tryAnalysisAlternative({ type: 'move', to: { x: 3, y: 8 } }), false);
+    assert.equal(game.tryAnalysisAlternative({ type: 'wall', x: 2, y: 2, orientation: 'horizontal' }), true);
+    assert.equal(JSON.stringify(game.STATE.roomData), live);
+    assert.equal(game.analysisHistory()[0].state.walls.length, 0);
+    game.showAnalysisPosition(1);
+    assert.equal(elements.get('analysis-retry-controls').hidden, true);
+});
+
+test('engine line steps through a separate board and returns to recorded play', async () => {
+    const { game, elements } = harness();
+    game.startAIGame('easy');
+    await flush();
+    const next = structuredClone(game.STATE.roomData);
+    next.boardState.p1.y = 1; next.turn = 'p2';
+    game.recordAnalysisSnapshot(next);
+    game.analysisHistory()[0].turn = 'p1';
+    game.openMatchAnalysis();
+    game.setAnalysisReports([{ bestAction: { type: 'move', to: { x: 3, y: 1 } }, label: 'En iyi', loss: 0 }]);
+    game.showAnalysisPosition(1);
+    const snapshot = JSON.stringify(game.analysisHistory());
+    game.startAnalysisLine();
+    assert.equal(elements.get('analysis-line-next').hidden, false);
+    game.showAnalysisLineStep(2);
+    assert.match(elements.get('analysis-detail').textContent, /2 \/ /);
+    game.showAnalysisPosition(1);
+    assert.equal(elements.get('analysis-line-next').hidden, true);
+    assert.equal(JSON.stringify(game.analysisHistory()), snapshot);
 });
 
 test('review reveals the suggested move on the previous position and returns to the game', async () => {
@@ -227,10 +273,10 @@ test('review reveals the suggested move on the previous position and returns to 
     game.openMatchAnalysis();
     game.setAnalysisReports([{ bestAction: { type: 'move', to: { x: 3, y: 1 } }, label: 'En iyi', loss: 0, depth: 4 }]);
     game.showAnalysisPosition(1);
-    assert.equal(elements.get('analysis-board').children.length, 65);
+    assert.equal(elements.get('analysis-board').children.length, 67);
     game.toggleAnalysisPreview();
     assert.equal(elements.get('analysis-board').children.length, 66);
     assert.equal(elements.get('analysis-best').textContent, 'Oyuna dön');
     game.toggleAnalysisPreview();
-    assert.equal(elements.get('analysis-board').children.length, 65);
+    assert.equal(elements.get('analysis-board').children.length, 67);
 });

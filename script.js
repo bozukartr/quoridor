@@ -14,6 +14,7 @@ import { POWERUP_INFO, INVENTORY_TYPES, powerupLabel, powerupCssColor, powerupRg
 import { chooseAiAction, aiThinkDelay, AI_LEVELS, getValidMoves as aiValidMoves, distanceToGoal, goalRowFor, wallInvalidReason } from "./ai.js";
 import { analyzePosition, classifyMove, evaluatePosition, winChance } from './analysis-engine.js';
 import { reviewTrend, reviewSummary, keyMoveIndexes, describePosition } from './review-insights.js';
+import { buildReviewLine, tryReviewAction } from './review-variation.js';
 
 // Game State Constants
 const GRID_COLS = 7;
@@ -340,6 +341,14 @@ function setupEventListeners() {
         if (next !== undefined) showAnalysisPosition(next);
     });
     document.getElementById('analysis-best').addEventListener('click', toggleAnalysisPreview);
+    document.getElementById('analysis-retry').addEventListener('click', startAnalysisRetry);
+    document.getElementById('analysis-retry-exit').addEventListener('click', () => showAnalysisPosition(analysisSelection));
+    document.getElementById('analysis-show-line').addEventListener('click', startAnalysisLine);
+    document.getElementById('analysis-line-prev').addEventListener('click', () => showAnalysisLineStep(analysisLineStep - 1));
+    document.getElementById('analysis-line-next').addEventListener('click', () => showAnalysisLineStep(analysisLineStep + 1));
+    for (const [id, mode] of [['analysis-retry-pawn', 'move'], ['analysis-retry-horizontal', 'horizontal'], ['analysis-retry-vertical', 'vertical']])
+        document.getElementById(id).addEventListener('click', () => { analysisRetryMode = mode; renderRetryBoard(); });
+    document.getElementById('analysis-board').addEventListener('click', handleAnalysisBoardClick);
     document.getElementById('analysis-summary-toggle').addEventListener('click', () => setAnalysisSummaryVisible(true));
     document.getElementById('analysis-summary-close').addEventListener('click', () => setAnalysisSummaryVisible(false));
     document.getElementById('analysis-review-start').addEventListener('click', () => setAnalysisSummaryVisible(false));
@@ -2337,7 +2346,7 @@ function formatEngineAction(action) {
     if (action.type === 'wall') return `${action.orientation === 'horizontal' ? 'Yatay' : 'Dikey'} duvar · ${String.fromCharCode(65 + action.x)}${action.y + 1}`;
     return 'Özel güç';
 }
-function renderAnalysisBoard(state, suggestion = null) {
+function renderAnalysisBoard(state, suggestion = null, played = null) {
     const board = document.getElementById('analysis-board');
     board.replaceChildren();
     board.style.setProperty('--board-cols', state.cols);
@@ -2369,11 +2378,35 @@ function renderAnalysisBoard(state, suggestion = null) {
         marker.style.top = `${(suggestion.type === 'move' ? suggestion.to.y + .5 : suggestion.y + (suggestion.orientation === 'horizontal' ? 1 : 0)) / state.rows * 100}%`;
         board.append(marker);
     }
+    if (played) {
+        const { before, pid, label } = played;
+        const start = before.players[pid], end = state.players[pid];
+        const changedWall = state.walls.find(w => !before.walls.some(o => o.x === w.x && o.y === w.y && o.type === w.type));
+        if (start.x !== end.x || start.y !== end.y) {
+            for (const [point, kind] of [[start, 'from'], [end, 'to']]) {
+                const marker = document.createElement('span');
+                marker.className = `analysis-played-${kind}${label === 'Hata' || label === 'Büyük hata' ? ' mistake' : ''}`;
+                marker.style.left = `${(point.x + .5) / state.cols * 100}%`;
+                marker.style.top = `${(point.y + .5) / state.rows * 100}%`;
+                board.append(marker);
+            }
+        } else if (changedWall) {
+            const marker = document.createElement('span');
+            marker.className = `analysis-played-wall ${changedWall.type}${label === 'Hata' || label === 'Büyük hata' ? ' mistake' : ''}`;
+            marker.style.left = `${(changedWall.x + (changedWall.type === 'vertical' ? 1 : 0)) / state.cols * 100}%`;
+            marker.style.top = `${(changedWall.y + (changedWall.type === 'horizontal' ? 1 : 0)) / state.rows * 100}%`;
+            board.append(marker);
+        }
+    }
 }
 let analysisSelection = 0;
 let analysisReports = [];
 let analysisTrend = [];
 let analysisPreview = false;
+let analysisRetry = null;
+let analysisRetryMode = 'move';
+let analysisLine = null;
+let analysisLineStep = 0;
 
 function actualAnalysisAction(before, after, pid) {
     const a = before.players[pid], b = after.players[pid];
@@ -2408,11 +2441,126 @@ function renderAnalysisGraph() {
 }
 
 function updateReviewSummary() {
-    const summary = reviewSummary(analysisReports, analysisHistory, STATE.playerId);
-    document.getElementById('analysis-stat-best').textContent = summary.best;
-    document.getElementById('analysis-stat-good').textContent = summary.good;
-    document.getElementById('analysis-stat-mistakes').textContent = summary.mistakes;
-    document.getElementById('analysis-summary-status').textContent = `${summary.reviewed} kendi hamlen incelendi · ${summary.critical} kritik hamle`;
+    for (const pid of ['p1', 'p2']) {
+        const summary = reviewSummary(analysisReports, analysisHistory, pid);
+        for (const stat of ['best', 'good', 'mistakes', 'reviewed'])
+            document.getElementById(`analysis-${pid}-${stat}`).textContent = summary[stat];
+    }
+    const reviewed = analysisReports.filter(report => report !== undefined).length;
+    document.getElementById('analysis-summary-status').textContent = `${reviewed} hamle incelendi · ${keyMoveIndexes(analysisReports).length} kritik an`;
+}
+
+function renderAnalysisStrip() {
+    const strip = document.getElementById('analysis-move-strip');
+    strip.replaceChildren();
+    analysisHistory.forEach((entry, index) => {
+        const step = document.createElement('button');
+        step.type = 'button';
+        const report = analysisReports[index - 1];
+        step.className = `analysis-move-chip${index === analysisSelection ? ' selected' : ''}${report?.label === 'Hata' || report?.label === 'Büyük hata' ? ' mistake' : ''}`;
+        step.textContent = index === 0 ? 'Başlangıç' : `${index} · ${actualAnalysisAction(analysisHistory[index - 1].state, entry.state, analysisHistory[index - 1].turn)}`;
+        step.setAttribute('aria-label', `${index}. hamle ${report?.label || ''}`);
+        if (index === analysisSelection) step.setAttribute('aria-current', 'step');
+        step.addEventListener('click', () => showAnalysisPosition(index));
+        strip.append(step);
+        if (index === analysisSelection) step.scrollIntoView?.({ block: 'nearest', inline: 'center' });
+    });
+}
+
+function renderRetryBoard() {
+    if (!analysisRetry) return;
+    const { before, pid, result } = analysisRetry;
+    renderAnalysisBoard(result || before, null, result ? { before, pid, label: 'En iyi' } : null);
+    const board = document.getElementById('analysis-board');
+    board.setAttribute('aria-label', result ? 'Denenen alternatif hamle' : 'Alternatif hamle seç');
+    for (const mode of ['move', 'horizontal', 'vertical']) {
+        const id = mode === 'move' ? 'pawn' : mode;
+        document.getElementById(`analysis-retry-${id}`).classList.toggle('active', analysisRetryMode === mode);
+    }
+    if (!result && analysisRetryMode === 'move') {
+        for (const to of aiValidMoves(before, pid)) {
+            const target = document.createElement('button');
+            target.type = 'button';
+            target.className = 'analysis-retry-target';
+            target.style.left = `${(to.x + .5) / before.cols * 100}%`;
+            target.style.top = `${(to.y + .5) / before.rows * 100}%`;
+            target.setAttribute('aria-label', `Taşı ${String.fromCharCode(65 + to.x)}${to.y + 1} konumuna taşı`);
+            target.addEventListener('click', event => { event.stopPropagation(); tryAnalysisAlternative({ type: 'move', to }); });
+            board.append(target);
+        }
+    }
+}
+
+function tryAnalysisAlternative(action) {
+    if (!analysisRetry) return false;
+    const { before, pid } = analysisRetry;
+    const next = tryReviewAction(before, pid, action);
+    if (!next) {
+        document.getElementById('analysis-detail').textContent = 'Bu hamle geçersiz. Yol açık kalmalı ve duvarlar çakışmamalı.';
+        return false;
+    }
+    analysisRetry.result = next;
+    const label = formatEngineAction(action);
+    renderRetryBoard();
+    document.getElementById('analysis-move-title').textContent = label;
+    document.getElementById('analysis-detail').textContent = `Alternatif denendi. Motor önerisi: ${formatEngineAction(analysisReports[analysisSelection - 1]?.bestAction)}. Başka bir hamle için tahtaya dokun.`;
+    document.getElementById('analysis-grade').textContent = 'DENEME';
+    return true;
+}
+
+function handleAnalysisBoardClick(event) {
+    if (!analysisRetry) return;
+    const { before } = analysisRetry;
+    const box = event.currentTarget.getBoundingClientRect();
+    const x = Math.min(before.cols - 1, Math.max(0, Math.floor((event.clientX - box.left) / box.width * before.cols)));
+    const y = Math.min(before.rows - 1, Math.max(0, Math.floor((event.clientY - box.top) / box.height * before.rows)));
+    if (analysisRetryMode === 'move') tryAnalysisAlternative({ type: 'move', to: { x, y } });
+    else tryAnalysisAlternative({ type: 'wall', x: Math.min(before.cols - 2, x), y: Math.min(before.rows - 2, y), orientation: analysisRetryMode });
+}
+
+function startAnalysisRetry() {
+    if (!analysisSelection) return;
+    const before = analysisHistory[analysisSelection - 1];
+    analysisRetry = { before: before.state, pid: before.turn, result: null };
+    analysisLine = null;
+    analysisRetryMode = 'move';
+    document.getElementById('analysis-retry-controls').hidden = false;
+    document.getElementById('analysis-retry-exit').hidden = false;
+    document.getElementById('analysis-retry').hidden = true;
+    document.getElementById('analysis-show-line').hidden = true;
+    document.getElementById('analysis-move-title').textContent = 'Hamleyi yeniden oyna';
+    document.getElementById('analysis-detail').textContent = 'Taş için işaretli kareye dokun. Duvar için yönü seç, sonra tahtada başlangıç karesine dokun.';
+    document.getElementById('analysis-grade').textContent = 'DENEME';
+    renderRetryBoard();
+}
+
+function showAnalysisLineStep(step) {
+    if (!analysisLine) return;
+    analysisLineStep = Math.max(0, Math.min(step, analysisLine.length));
+    const before = analysisHistory[analysisSelection - 1];
+    const entry = analysisLine[analysisLineStep - 1];
+    renderAnalysisBoard(entry?.state || before.state, null,
+        entry ? { before: analysisLine[analysisLineStep - 2]?.state || before.state, pid: entry.pid, label: 'En iyi' } : null);
+    document.getElementById('analysis-move-title').textContent = entry ? formatEngineAction(entry.action) : 'Öneri öncesi konum';
+    document.getElementById('analysis-detail').textContent = `Motor varyantı · ${analysisLineStep} / ${analysisLine.length} hamle. Oklarla devam et.`;
+    document.getElementById('analysis-line-prev').disabled = analysisLineStep === 0;
+    document.getElementById('analysis-line-next').disabled = analysisLineStep === analysisLine.length;
+}
+
+function startAnalysisLine() {
+    if (!analysisSelection) return;
+    const before = analysisHistory[analysisSelection - 1];
+    const report = analysisReports[analysisSelection - 1];
+    analysisLine = buildReviewLine(before.state, before.turn, report?.bestAction);
+    if (!analysisLine.length) return;
+    analysisRetry = null;
+    document.getElementById('analysis-show-line').hidden = true;
+    document.getElementById('analysis-retry').hidden = true;
+    document.getElementById('analysis-best').hidden = true;
+    document.getElementById('analysis-line-prev').hidden = false;
+    document.getElementById('analysis-line-next').hidden = false;
+    document.getElementById('analysis-retry-exit').hidden = false;
+    showAnalysisLineStep(1);
 }
 
 function setAnalysisSummaryVisible(visible) {
@@ -2428,18 +2576,31 @@ function toggleAnalysisPreview() {
     const button = document.getElementById('analysis-best');
     button.textContent = analysisPreview ? 'Oyuna dön' : 'Öneriyi tahtada göster';
     renderAnalysisBoard(analysisPreview ? analysisHistory[analysisSelection - 1].state : analysisHistory[analysisSelection].state,
-        analysisPreview ? report.bestAction : null);
+        analysisPreview ? report.bestAction : null, analysisPreview ? null : {
+            before: analysisHistory[analysisSelection - 1].state,
+            pid: analysisHistory[analysisSelection - 1].turn, label: report.label
+        });
 }
 
 function showAnalysisPosition(index) {
     if (!analysisHistory.length) return;
     analysisSelection = Math.max(0, Math.min(index, analysisHistory.length - 1));
     analysisPreview = false;
+    analysisRetry = null;
+    analysisLine = null;
+    document.getElementById('analysis-board').setAttribute('aria-label', 'Seçilen hamle sonrası tahta');
+    document.getElementById('analysis-retry-controls').hidden = true;
+    document.getElementById('analysis-retry-exit').hidden = true;
+    document.getElementById('analysis-line-prev').hidden = true;
+    document.getElementById('analysis-line-next').hidden = true;
     const total = analysisHistory.length - 1;
     const state = analysisHistory[analysisSelection].state;
     const chance = winChance(evaluatePosition(state, STATE.playerId));
-    renderAnalysisBoard(state);
+    const previous = analysisHistory[analysisSelection - 1];
+    renderAnalysisBoard(state, null, previous ? { before: previous.state, pid: previous.turn,
+        label: analysisReports[analysisSelection - 1]?.label } : null);
     renderAnalysisGraph();
+    renderAnalysisStrip();
     const nextKey = keyMoveIndexes(analysisReports).find(step => step > analysisSelection);
     const keyButton = document.getElementById('analysis-next-key');
     keyButton.hidden = nextKey === undefined;
@@ -2457,6 +2618,8 @@ function showAnalysisPosition(index) {
     const grade = document.getElementById('analysis-grade');
     bestButton.hidden = true;
     bestButton.textContent = 'Öneriyi tahtada göster';
+    document.getElementById('analysis-retry').hidden = true;
+    document.getElementById('analysis-show-line').hidden = true;
     if (analysisSelection === 0) {
         grade.textContent = 'KONUM';
         grade.dataset.grade = 'neutral';
@@ -2472,6 +2635,8 @@ function showAnalysisPosition(index) {
     grade.textContent = report === undefined ? 'İNCELENİYOR' : (report?.label || 'ÖZEL HAMLE').toLocaleUpperCase('tr-TR');
     grade.dataset.grade = report?.label === 'Hata' || report?.label === 'Büyük hata' ? 'mistake' : 'good';
     bestButton.hidden = !report?.bestAction;
+    document.getElementById('analysis-retry').hidden = !report || !['Hata', 'Büyük hata'].includes(report.label);
+    document.getElementById('analysis-show-line').hidden = !report?.bestAction;
     count.textContent = `${analysisSelection}. HAMLE · ${actor.toLocaleUpperCase('tr-TR')}`;
     title.textContent = actualAnalysisAction(before.state, state, pid);
     detail.textContent = report === undefined ? 'Motor bu hamleyi değerlendiriyor…' : report
@@ -2487,6 +2652,8 @@ function openMatchAnalysis() {
     analysisTrend = reviewTrend(analysisHistory, STATE.playerId);
     document.getElementById('analysis-top-name').textContent = `${STATE.roomData?.p1 || 'Oyuncu 1'}${STATE.playerId === 'p1' ? ' · Sen' : ''}`;
     document.getElementById('analysis-bottom-name').textContent = `${STATE.roomData?.p2 || 'Oyuncu 2'}${STATE.playerId === 'p2' ? ' · Sen' : ''}`;
+    document.getElementById('analysis-summary-p1').textContent = STATE.roomData?.p1 || 'Oyuncu 1';
+    document.getElementById('analysis-summary-p2').textContent = STATE.roomData?.p2 || 'Oyuncu 2';
     document.getElementById('analysis-summary-headline').textContent = STATE.roomData?.boardState?.winner === STATE.playerId
         ? 'Kazandığın yolu keşfet' : 'Bir sonraki oyuna hazırlan';
     setAnalysisSummaryVisible(true);
@@ -2507,8 +2674,8 @@ function openMatchAnalysis() {
         analysisReports[index] = result;
         index++;
         document.getElementById('analysis-progress').textContent = `${index} / ${total} incelendi`;
-        if (analysisSelection === index) showAnalysisPosition(index);
-        else renderAnalysisGraph();
+        if (analysisSelection === index && !analysisRetry && !analysisLine) showAnalysisPosition(index);
+        else { renderAnalysisGraph(); renderAnalysisStrip(); }
         updateReviewSummary();
         setTimeout(next, 0);
     };
