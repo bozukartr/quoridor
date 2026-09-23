@@ -12,6 +12,7 @@ import { GameRenderer } from "./game-renderer.js";
 import { LocalRoom } from "./local-room.js";
 import { POWERUP_INFO, INVENTORY_TYPES, powerupLabel, powerupCssColor, powerupRgba, powerupIconClass, refreshPowerupGlyphs, fontAwesomeAvailable } from "./powerups.js";
 import { chooseAiAction, aiThinkDelay, AI_LEVELS, getValidMoves as aiValidMoves, distanceToGoal, goalRowFor, wallInvalidReason } from "./ai.js";
+import { analyzePosition, classifyMove, evaluatePosition, winChance } from './analysis-engine.js';
 
 // Game State Constants
 const GRID_COLS = 7;
@@ -43,6 +44,9 @@ const STATE = {
     localRoom: null, // Tek kişilik modda Firebase yerine kullanılan yerel oda
     aiThinking: false
 };
+let analysisHistory = [];
+let analysisRun = 0;
+let analysisWorker = null;
 
 const AI_PID = 'p2'; // Yapay zeka her zaman p2 olarak oynar
 
@@ -327,6 +331,13 @@ function setupEventListeners() {
     if (playAiBtn) playAiBtn.addEventListener('click', () => startAIGame(STATE.aiLevel));
     document.getElementById('restart-btn').addEventListener('click', returnToMenu); // Main Menu
     document.getElementById('rematch-btn').addEventListener('click', resetRoom); // Rematch
+    document.getElementById('analyze-btn').addEventListener('click', openMatchAnalysis);
+    document.getElementById('analysis-close').addEventListener('click', () => {
+        document.getElementById('analysis-panel').hidden = true;
+        analysisRun++;
+        analysisWorker?.terminate();
+        analysisWorker = null;
+    });
     document.getElementById('cancel-room-btn').addEventListener('click', cancelWaiting);
 
     // Header Controls
@@ -1223,7 +1234,14 @@ function aiTakeTurn() {
     if (!STATE.vsAI || !STATE.gameActive || STATE.currentTurn !== AI_PID) return;
 
     const snapshot = boardSnapshot();
-    const { pre, main } = chooseAiAction(snapshot, { pid: AI_PID, level: STATE.aiLevel });
+    const chosen = chooseAiAction(snapshot, { pid: AI_PID, level: STATE.aiLevel });
+    const { pre } = chosen;
+    const searchState = pre.some(action => action.powerupType === 'wall')
+        ? { ...snapshot, players: { ...snapshot.players, [AI_PID]: { ...snapshot.players[AI_PID], wallsLeft: snapshot.players[AI_PID].wallsLeft + 1 } } }
+        : snapshot;
+    const main = STATE.aiLevel === 'hard' && !snapshot.activeEffects?.[AI_PID]?.chaos && ['move', 'wall'].includes(chosen.main?.type)
+        ? (analyzePosition(searchState, { pid: AI_PID, depth: 2, maxNodes: 1200 }).bestAction || chosen.main)
+        : chosen.main;
 
     if (!main) {
         roomUpdate({ '/turn': STATE.playerId });
@@ -1594,6 +1612,10 @@ function startGame(data) {
     STATE._hourglassTimer = null;
     cancelDrag();
     resetMatchState(STATE, data);
+    analysisRun++;
+    if (analysisWorker) { analysisWorker.terminate(); analysisWorker = null; }
+    analysisHistory = [];
+    document.getElementById('analysis-panel').hidden = true;
     STATE.gameActive = true;
 
     showScreen('game');
@@ -1630,6 +1652,7 @@ function listenGameLoop() {
 
 function applyRoomSnapshot(data) {
         if (!data) return;
+        recordAnalysisSnapshot(data);
         STATE.roomData = structuredClone(data);
 
         if (data.status === 'active' &&
@@ -2269,3 +2292,139 @@ function listenForInvites(uid) {
 }
 
 
+
+// Match-local timeline. Each distinct board position is kept once; clock ticks do not add turns.
+function analysisBoard(data) {
+    const board = data.boardState || {};
+    return {
+        cols: GRID_COLS, rows: GRID_ROWS,
+        walls: (board.walls || []).map(w => ({ x: w.x, y: w.y, type: w.type })),
+        powerups: (board.powerups || []).map(p => ({ ...p })),
+        players: { p1: { ...(board.p1 || {}) }, p2: { ...(board.p2 || {}) } },
+        frozenPlayer: board.frozenPlayer || null
+    };
+}
+function recordAnalysisSnapshot(data) {
+    if (!data.boardState?.p1 || !data.boardState?.p2) return;
+    const state = analysisBoard(data);
+    const signature = JSON.stringify([state.players.p1.x, state.players.p1.y, state.players.p1.wallsLeft,
+        state.players.p2.x, state.players.p2.y, state.players.p2.wallsLeft, state.walls]);
+    const last = analysisHistory.at(-1);
+    if (last?.signature === signature) return;
+    analysisHistory.push({ state, signature, turn: data.turn });
+}
+function formatEngineAction(action) {
+    if (!action) return '—';
+    if (action.type === 'move') return `Taş → ${String.fromCharCode(65 + action.to.x)}${action.to.y + 1}`;
+    if (action.type === 'wall') return `${action.orientation === 'horizontal' ? 'Yatay' : 'Dikey'} duvar · ${String.fromCharCode(65 + action.x)}${action.y + 1}`;
+    return 'Özel güç';
+}
+function renderAnalysisBoard(state) {
+    const board = document.getElementById('analysis-board');
+    board.replaceChildren();
+    board.style.setProperty('--board-cols', state.cols);
+    board.style.setProperty('--board-rows', state.rows);
+    for (let y = 0; y < state.rows; y++) for (let x = 0; x < state.cols; x++) {
+        const cell = document.createElement('span');
+        cell.className = 'analysis-cell';
+        board.append(cell);
+    }
+    for (const wall of state.walls) {
+        const el = document.createElement('span');
+        el.className = `analysis-wall ${wall.type === 'horizontal' ? 'horizontal' : 'vertical'}`;
+        el.style.left = `${(wall.x + (wall.type === 'vertical' ? 1 : 0)) / state.cols * 100}%`;
+        el.style.top = `${(wall.y + (wall.type === 'horizontal' ? 1 : 0)) / state.rows * 100}%`;
+        board.append(el);
+    }
+    for (const pid of ['p1', 'p2']) {
+        const pawn = document.createElement('span');
+        pawn.className = `analysis-pawn ${pid}`;
+        pawn.style.left = `${(state.players[pid].x + .5) / state.cols * 100}%`;
+        pawn.style.top = `${(state.players[pid].y + .5) / state.rows * 100}%`;
+        board.append(pawn);
+    }
+}
+function renderAnalysisEntry(index, result) {
+    const entry = analysisHistory[index];
+    const after = analysisHistory[index + 1];
+    const self = STATE.playerId;
+    const chance = winChance(evaluatePosition(after.state, self));
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'analysis-turn';
+    const actor = entry.turn === self ? 'Sen' : (STATE.vsAI ? 'Bilgisayar' : 'Rakip');
+    const quality = result?.label || 'Özel hamle';
+    card.innerHTML = `<span class="analysis-turn-number">${index + 1}</span><span class="analysis-turn-info"><strong></strong><small></small></span><span class="analysis-turn-grade"></span>`;
+    card.querySelector('strong').textContent = `${actor} · ${quality}`;
+    card.querySelector('small').textContent = result ? `Öneri: ${formatEngineAction(result.bestAction)}` : 'Güç veya özel durum';
+    card.querySelector('.analysis-turn-grade').textContent = `${chance}%`;
+    card.addEventListener('click', () => {
+        document.querySelectorAll('.analysis-turn.selected').forEach(el => el.classList.remove('selected'));
+        card.classList.add('selected');
+        document.getElementById('analysis-chance').textContent = `${chance}%`;
+        document.getElementById('analysis-chance-bar').style.width = `${chance}%`;
+        renderAnalysisBoard(after.state);
+        document.getElementById('analysis-detail').textContent = result
+            ? `${actor}: ${quality.toLowerCase()}. Önerilen hamle: ${formatEngineAction(result.bestAction)}. Tahmini konum kaybı: ${Math.round(result.loss)} puan.`
+            : `${actor}: Bu turda özel güç veya birden fazla değişiklik kullanıldı.`;
+    });
+    return card;
+}
+function openMatchAnalysis() {
+    const panel = document.getElementById('analysis-panel');
+    const list = document.getElementById('analysis-turns');
+    panel.hidden = false;
+    list.replaceChildren();
+    const total = Math.max(0, analysisHistory.length - 1);
+    document.getElementById('analysis-progress').textContent = total ? `${total} konum inceleniyor…` : 'Bu maç için hamle kaydı bulunamadı.';
+    if (!total) return;
+    const run = ++analysisRun;
+    if (analysisWorker) analysisWorker.terminate();
+    try {
+        analysisWorker = typeof Worker !== 'undefined'
+            ? new Worker(new URL('./analysis-worker.js', import.meta.url), { type: 'module' }) : null;
+    } catch { analysisWorker = null; }
+    let index = 0;
+    const complete = result => {
+        if (run !== analysisRun || panel.hidden) return;
+        const card = renderAnalysisEntry(index, result);
+        list.append(card);
+        if (index === 0) card.click();
+        index++;
+        document.getElementById('analysis-progress').textContent = `${index} / ${total} konum incelendi`;
+        setTimeout(next, 0);
+    };
+    if (analysisWorker) {
+        analysisWorker.onmessage = event => {
+            if (event.data.run !== run || event.data.index !== index) return;
+            complete(event.data.result || null);
+        };
+        analysisWorker.onerror = () => {
+            analysisWorker?.terminate();
+            analysisWorker = null;
+            if (run === analysisRun) setTimeout(next, 0);
+        };
+    }
+    const next = () => {
+        if (run !== analysisRun || panel.hidden) return;
+        if (index >= total) {
+            document.getElementById('analysis-progress').textContent = `${total} konum incelendi · Motor: derinlik ${analysisWorker ? 3 : 2}`;
+            analysisWorker?.terminate();
+            analysisWorker = null;
+            return;
+        }
+        const before = analysisHistory[index];
+        const after = analysisHistory[index + 1];
+        const pid = before.turn;
+        const changed = after.state.walls.length !== before.state.walls.length ||
+            after.state.players[pid]?.x !== before.state.players[pid]?.x ||
+            after.state.players[pid]?.y !== before.state.players[pid]?.y;
+        if (!changed || (pid !== 'p1' && pid !== 'p2')) { complete(null); return; }
+        if (analysisWorker) {
+            analysisWorker.postMessage({ before: before.state, after: after.state, pid, index, run });
+        } else {
+            complete(classifyMove(before.state, after.state, pid, null, { depth: 2, maxNodes: 900 }));
+        }
+    };
+    setTimeout(next, 0);
+}

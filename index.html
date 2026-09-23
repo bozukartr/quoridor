@@ -200,10 +200,19 @@
                     <div class="result-player"><span class="result-avatar result-avatar-opponent"><i class="fa-solid fa-chess-pawn" aria-hidden="true"></i></span><span class="result-player-name" id="result-opponent-name">Rakip</span><span class="result-player-label">RAKİP</span></div>
                 </div>
                 <div class="result-actions">
+                    <button id="analyze-btn" class="result-analyze"><i class="fa-solid fa-chart-line" aria-hidden="true"></i> Maçı Analiz Et <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button>
                     <button id="rematch-btn" class="result-rematch"><i class="fa-solid fa-rotate-right" aria-hidden="true"></i> Tekrar Oyna <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button>
                     <button id="restart-btn" class="result-home"><i class="fa-solid fa-house" aria-hidden="true"></i> Ana menüye dön</button>
                 </div>
             </div>
+            <section id="analysis-panel" class="analysis-panel" aria-label="Maç analizi" hidden>
+                <header class="analysis-header"><button id="analysis-close" type="button" aria-label="Sonuca dön"><i class="fa-solid fa-arrow-left"></i></button><div><small>QUORIDOR MOTORU</small><h2>Maç analizi</h2></div></header>
+                <div class="analysis-overview"><span>TAHMİNİ KONUM ÜSTÜNLÜĞÜN</span><strong id="analysis-chance">50%</strong><div class="analysis-meter"><div id="analysis-chance-bar" style="width:50%"></div></div><p id="analysis-detail">İncelemek için bir hamle seç.</p></div>
+                <div id="analysis-board" class="analysis-board" role="img" aria-label="Seçilen hamle sonrası tahta"></div>
+                <p id="analysis-progress" role="status" aria-live="polite"></p>
+                <div id="analysis-turns" class="analysis-turns"></div>
+                <p class="analysis-note">Yüzde ve hamle etiketleri sığ aramaya dayalı tahmindir; gerçek kazanma olasılığı veya Elo değildir. Güçler ve zaman baskısı puana dahil değildir.</p>
+            </section>
         </div>
     </div>
 
