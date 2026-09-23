@@ -13,6 +13,7 @@ import { LocalRoom } from "./local-room.js";
 import { POWERUP_INFO, INVENTORY_TYPES, powerupLabel, powerupCssColor, powerupRgba, powerupIconClass, refreshPowerupGlyphs, fontAwesomeAvailable } from "./powerups.js";
 import { chooseAiAction, aiThinkDelay, AI_LEVELS, getValidMoves as aiValidMoves, distanceToGoal, goalRowFor, wallInvalidReason } from "./ai.js";
 import { analyzePosition, classifyMove, evaluatePosition, winChance } from './analysis-engine.js';
+import { reviewTrend, reviewSummary, keyMoveIndexes, describePosition } from './review-insights.js';
 
 // Game State Constants
 const GRID_COLS = 7;
@@ -334,6 +335,13 @@ function setupEventListeners() {
     document.getElementById('analyze-btn').addEventListener('click', openMatchAnalysis);
     document.getElementById('analysis-prev').addEventListener('click', () => showAnalysisPosition(analysisSelection - 1));
     document.getElementById('analysis-next').addEventListener('click', () => showAnalysisPosition(analysisSelection + 1));
+    document.getElementById('analysis-next-key').addEventListener('click', () => {
+        const next = keyMoveIndexes(analysisReports).find(index => index > analysisSelection);
+        if (next !== undefined) showAnalysisPosition(next);
+    });
+    document.getElementById('analysis-best').addEventListener('click', toggleAnalysisPreview);
+    document.getElementById('analysis-summary-toggle').addEventListener('click', () => setAnalysisSummaryVisible(true));
+    document.getElementById('analysis-summary-close').addEventListener('click', () => setAnalysisSummaryVisible(false));
     document.addEventListener('keydown', event => {
         if (document.getElementById('analysis-panel').hidden) return;
         if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
@@ -2328,7 +2336,7 @@ function formatEngineAction(action) {
     if (action.type === 'wall') return `${action.orientation === 'horizontal' ? 'Yatay' : 'Dikey'} duvar · ${String.fromCharCode(65 + action.x)}${action.y + 1}`;
     return 'Özel güç';
 }
-function renderAnalysisBoard(state) {
+function renderAnalysisBoard(state, suggestion = null) {
     const board = document.getElementById('analysis-board');
     board.replaceChildren();
     board.style.setProperty('--board-cols', state.cols);
@@ -2352,9 +2360,19 @@ function renderAnalysisBoard(state) {
         pawn.style.top = `${(state.players[pid].y + .5) / state.rows * 100}%`;
         board.append(pawn);
     }
+    if (suggestion) {
+        const marker = document.createElement('span');
+        marker.className = suggestion.type === 'wall'
+            ? `analysis-suggestion-wall ${suggestion.orientation}` : 'analysis-suggestion-move';
+        marker.style.left = `${(suggestion.type === 'move' ? suggestion.to.x + .5 : suggestion.x + (suggestion.orientation === 'vertical' ? 1 : 0)) / state.cols * 100}%`;
+        marker.style.top = `${(suggestion.type === 'move' ? suggestion.to.y + .5 : suggestion.y + (suggestion.orientation === 'horizontal' ? 1 : 0)) / state.rows * 100}%`;
+        board.append(marker);
+    }
 }
 let analysisSelection = 0;
 let analysisReports = [];
+let analysisTrend = [];
+let analysisPreview = false;
 
 function actualAnalysisAction(before, after, pid) {
     const a = before.players[pid], b = after.players[pid];
@@ -2363,13 +2381,60 @@ function actualAnalysisAction(before, after, pid) {
     return wall ? formatEngineAction({ type: 'wall', x: wall.x, y: wall.y, orientation: wall.type }) : 'Özel hamle';
 }
 
+function renderAnalysisGraph() {
+    const graph = document.getElementById('analysis-graph');
+    graph.replaceChildren();
+    const critical = new Set(keyMoveIndexes(analysisReports));
+    analysisTrend.forEach((value, index) => {
+        const step = document.createElement('button');
+        step.type = 'button';
+        step.className = `analysis-graph-step${index === analysisSelection ? ' selected' : ''}${critical.has(index) ? ' critical' : ''}`;
+        step.setAttribute('aria-label', `${index}. konum, tahmini üstünlük ${value}%`);
+        const bar = document.createElement('span');
+        bar.style.height = `${Math.max(5, value)}%`;
+        step.append(bar);
+        step.addEventListener('click', () => showAnalysisPosition(index));
+        graph.append(step);
+    });
+}
+
+function updateReviewSummary() {
+    const summary = reviewSummary(analysisReports, analysisHistory, STATE.playerId);
+    document.getElementById('analysis-stat-best').textContent = summary.best;
+    document.getElementById('analysis-stat-good').textContent = summary.good;
+    document.getElementById('analysis-stat-mistakes').textContent = summary.mistakes;
+    document.getElementById('analysis-summary-status').textContent = `${summary.reviewed} kendi hamlen incelendi · ${summary.critical} kritik hamle`;
+}
+
+function setAnalysisSummaryVisible(visible) {
+    document.getElementById('analysis-summary').hidden = !visible;
+    document.getElementById('analysis-summary-toggle').setAttribute('aria-expanded', String(visible));
+}
+
+function toggleAnalysisPreview() {
+    if (analysisSelection === 0) return;
+    const report = analysisReports[analysisSelection - 1];
+    if (!report?.bestAction) return;
+    analysisPreview = !analysisPreview;
+    const button = document.getElementById('analysis-best');
+    button.textContent = analysisPreview ? 'Oyuna dön' : 'Öneriyi tahtada göster';
+    renderAnalysisBoard(analysisPreview ? analysisHistory[analysisSelection - 1].state : analysisHistory[analysisSelection].state,
+        analysisPreview ? report.bestAction : null);
+}
+
 function showAnalysisPosition(index) {
     if (!analysisHistory.length) return;
     analysisSelection = Math.max(0, Math.min(index, analysisHistory.length - 1));
+    analysisPreview = false;
     const total = analysisHistory.length - 1;
     const state = analysisHistory[analysisSelection].state;
     const chance = winChance(evaluatePosition(state, STATE.playerId));
     renderAnalysisBoard(state);
+    renderAnalysisGraph();
+    const nextKey = keyMoveIndexes(analysisReports).find(step => step > analysisSelection);
+    const keyButton = document.getElementById('analysis-next-key');
+    keyButton.hidden = nextKey === undefined;
+    if (nextKey !== undefined) document.getElementById('analysis-next-key-label').textContent = `Sonraki kritik hamle · ${nextKey}`;
     document.getElementById('analysis-chance').textContent = `${chance}%`;
     document.getElementById('analysis-chance-bar').style.width = `${chance}%`;
     document.getElementById('analysis-step').textContent = `${analysisSelection} / ${total}`;
@@ -2378,6 +2443,9 @@ function showAnalysisPosition(index) {
     const count = document.getElementById('analysis-move-count');
     const title = document.getElementById('analysis-move-title');
     const detail = document.getElementById('analysis-detail');
+    const bestButton = document.getElementById('analysis-best');
+    bestButton.hidden = true;
+    bestButton.textContent = 'Öneriyi tahtada göster';
     if (analysisSelection === 0) {
         count.textContent = 'BAŞLANGIÇ KONUMU';
         title.textContent = 'Maç başlangıcı';
@@ -2388,10 +2456,11 @@ function showAnalysisPosition(index) {
     const pid = before.turn;
     const actor = pid === STATE.playerId ? 'Sen' : (STATE.vsAI ? 'Bilgisayar' : 'Rakip');
     const report = analysisReports[analysisSelection - 1];
+    bestButton.hidden = !report?.bestAction;
     count.textContent = `${analysisSelection}. HAMLE · ${actor.toLocaleUpperCase('tr-TR')}`;
     title.textContent = actualAnalysisAction(before.state, state, pid);
     detail.textContent = report === undefined ? 'Motor bu hamleyi değerlendiriyor…' : report
-        ? `${report.label} · Öneri: ${formatEngineAction(report.bestAction)} · Kayıp: ${Math.round(report.loss)} puan · Derinlik: ${report.depth}`
+        ? `${report.label} · ${describePosition(before.state, state, pid)} Kayıp: ${Math.round(report.loss)} puan.`
         : 'Güç veya özel durum; konum puanına dahil değil.';
 }
 
@@ -2400,6 +2469,9 @@ function openMatchAnalysis() {
     panel.hidden = false;
     const total = Math.max(0, analysisHistory.length - 1);
     analysisReports = Array(total).fill(undefined);
+    analysisTrend = reviewTrend(analysisHistory, STATE.playerId);
+    setAnalysisSummaryVisible(false);
+    updateReviewSummary();
     document.getElementById('analysis-progress').textContent = total ? `0 / ${total} incelendi` : 'Hamle kaydı bulunamadı';
     if (!analysisHistory.length) return;
     showAnalysisPosition(0);
@@ -2417,6 +2489,8 @@ function openMatchAnalysis() {
         index++;
         document.getElementById('analysis-progress').textContent = `${index} / ${total} incelendi`;
         if (analysisSelection === index) showAnalysisPosition(index);
+        else renderAnalysisGraph();
+        updateReviewSummary();
         setTimeout(next, 0);
     };
     if (analysisWorker) {

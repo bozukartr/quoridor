@@ -1886,3 +1886,35 @@ header {
 #analysis-progress { margin: 0; color: #9caebb; font-size: 11px; }
 .analysis-note { width: min(100%, 480px); flex: none; margin: 8px auto 0; font-size: 10px; line-height: 1.25; text-align: center; }
 @media (max-height: 650px) { .analysis-header { margin-bottom: 6px; } .analysis-header button { height: 40px; width: 40px; } .analysis-stage { gap: 6px; } .analysis-evaluation { padding: 8px 12px; } .analysis-position { min-height: 65px; } .analysis-position strong { font-size: 17px; } .analysis-navigation { margin-top: 4px; } .analysis-navigation button { height: 44px; } .analysis-note { margin-top: 5px; } }
+
+/* Guided review controls */
+.analysis-header > div { flex: 1; }
+.analysis-header #analysis-summary-toggle { margin-left: auto; }
+.analysis-position { min-height: 92px; }
+.analysis-position p { min-height: 30px; }
+.analysis-position #analysis-best { border: 0; padding: 5px 12px; border-radius: 9px; background: rgba(157,240,198,.13); color: #9df0c6; font: inherit; font-size: 11px; font-weight: 700; }
+.analysis-position #analysis-best[hidden] { display: none; }
+.analysis-graph { display: flex; align-items: stretch; gap: 1px; flex: none; width: min(100%, 480px); height: 34px; margin: 5px auto 0; padding: 3px 5px; border-radius: 10px; background: #1b2a36; overflow: hidden; }
+.analysis-graph-step { display: flex; align-items: end; justify-content: center; flex: 1 1 0; min-width: 1px; padding: 0; border: 0; border-radius: 3px; background: transparent; cursor: pointer; }
+.analysis-graph-step span { display: block; width: 100%; border-radius: 2px; background: #6dbb9b; }
+.analysis-graph-step.critical span { background: #f2a06c; }
+.analysis-graph-step.selected { outline: 2px solid #fff; outline-offset: 1px; }
+.analysis-next-key { display: flex; align-items: center; justify-content: center; gap: 7px; width: min(100%, 480px); flex: none; min-height: 28px; margin: 5px auto 0; border: 0; border-radius: 9px; background: #253d49; color: #a9f2ca; font: inherit; font-size: 12px; font-weight: 700; }
+.analysis-next-key[hidden] { visibility: hidden; }
+.analysis-suggestion-move { position: absolute; z-index: 5; width: calc(75% / var(--board-cols)); aspect-ratio: 1; border: 3px solid #8cf5b4; border-radius: 50%; background: rgba(130,245,180,.28); transform: translate(-50%, -50%); box-shadow: 0 0 15px #63de9a; }
+.analysis-suggestion-wall { position: absolute; z-index: 5; border: 2px solid #fff; border-radius: 4px; background: #78efab; box-shadow: 0 0 15px #63de9a; }
+.analysis-suggestion-wall.horizontal { width: calc(200% / var(--board-cols)); height: 9px; transform: translateY(-50%); }
+.analysis-suggestion-wall.vertical { width: 9px; height: calc(200% / var(--board-rows)); transform: translateX(-50%); }
+#analysis-summary[hidden] { display: none; }
+.analysis-summary { position: absolute; inset: 0; z-index: 30; display: flex; align-items: end; justify-content: center; background: rgba(5,13,22,.7); }
+.analysis-summary-card { position: relative; width: min(100%, 480px); padding: 30px 24px max(28px, env(safe-area-inset-bottom)); border-radius: 28px 28px 0 0; background: #1b2a36; box-shadow: 0 -20px 50px rgba(0,0,0,.3); }
+.analysis-summary-card > button { position: absolute; top: 20px; right: 20px; width: 38px; height: 38px; border: 0; border-radius: 12px; background: #334858; color: #fff; }
+.analysis-summary-card > small { color: #9df0c6; font-size: 10px; letter-spacing: .16em; font-weight: 800; }
+.analysis-summary-card h3 { margin: 7px 0 22px; font-size: 22px; }
+.analysis-summary-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.analysis-summary-stats > div { display: flex; flex-direction: column; align-items: center; padding: 16px 4px; border-radius: 15px; background: #283d49; }
+.analysis-summary-stats strong { color: #9df0c6; font-size: 28px; }
+.analysis-summary-stats span { color: #b4c4cd; font-size: 12px; }
+.analysis-summary-card p { color: #b8c8d1; font-size: 13px; }
+.analysis-summary-disclaimer { opacity: .7; line-height: 1.4; }
+@media (max-height: 650px) { .analysis-graph { height: 25px; margin-top: 3px; } .analysis-next-key { min-height: 23px; margin-top: 2px; } .analysis-position { min-height: 75px; } }
