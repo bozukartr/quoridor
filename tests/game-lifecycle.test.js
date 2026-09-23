@@ -7,6 +7,7 @@ import { LocalRoom } from '../local-room.js';
 import * as session from '../match-session.js';
 import * as powers from '../powerups.js';
 import * as ai from '../ai.js';
+import * as engine from '../analysis-engine.js';
 import { createSettings } from '../settings.js';
 import * as online from '../online-match.js';
 
@@ -31,7 +32,7 @@ function harness() {
     const stored = new Map();
     const storage = { getItem: key => stored.get(key), setItem: (key,value) => stored.set(key,value), removeItem: key => stored.delete(key) };
     const context = vm.createContext({
-        ...session, ...online, ...powers, ...ai, aiValidMoves: ai.getValidMoves, LocalRoom,
+        ...session, ...online, ...powers, ...ai, ...engine, aiValidMoves: ai.getValidMoves, LocalRoom,
         crypto: webcrypto, structuredClone, console, Date, Math,
         localStorage: storage, URLSearchParams, settings: createSettings(storage), recordFinishedMatch() {},
         serverTimestamp: () => Date.now(),
@@ -57,9 +58,11 @@ function harness() {
         }
     });
     let source = readFileSync(new URL('../script.js', import.meta.url), 'utf8')
-        .replace(/^import .*;\r?\n/gm, '').replace(/^init\(\);/m, '');
+        .replace(/^import .*;\r?\n/gm, '').replace(/^init\(\);/m, '')
+        .replace("new URL('./analysis-worker.js', import.meta.url)", "'analysis-worker.js'");
     source += `\ninitRenderer = () => {}; showToast = () => {}; startConfetti = () => {}; stopConfetti = () => {};
-    globalThis.game = { STATE, startAIGame, startGame, resetRoom, sendMove, listenGameLoop, restoreOnlineRoom, roomUpdate, tryMove };`;
+    globalThis.game = { STATE, startAIGame, startGame, resetRoom, sendMove, listenGameLoop, restoreOnlineRoom, roomUpdate, tryMove,
+        recordAnalysisSnapshot, analysisHistory: () => analysisHistory };`;
     vm.runInContext(source, context);
     return { game: context.game, room, histories, pending, elements, storage };
 }
@@ -160,4 +163,26 @@ test('stale optimistic position is restored from a confirmed snapshot after reje
     assert.equal(room.val().boardState.p1.y, 0);
     assert.equal(game.STATE.players.p1.y, 0);
     assert.equal(game.STATE.movePending, false);
+});
+
+test('analysis timeline records board changes once and resets for a rematch', async () => {
+    const { game } = harness();
+    game.startAIGame('easy');
+    await flush();
+    const initial = game.STATE.roomData;
+    game.recordAnalysisSnapshot(initial);
+    assert.equal(game.analysisHistory().length, 1);
+    game.recordAnalysisSnapshot({ ...initial, boardState: { ...initial.boardState, timeRemaining: { p1: 80, p2: 90 } } });
+    assert.equal(game.analysisHistory().length, 1);
+    const next = structuredClone(initial);
+    next.boardState.p1.y = 1;
+    next.turn = 'p2';
+    game.recordAnalysisSnapshot(next);
+    assert.equal(game.analysisHistory().length, 2);
+    assert.equal(game.analysisHistory()[0].turn, initial.turn);
+    game.sendMove({ type: 'surrender' });
+    await flush();
+    await game.resetRoom();
+    await flush();
+    assert.equal(game.analysisHistory().length, 1);
 });
