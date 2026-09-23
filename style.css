@@ -1918,3 +1918,57 @@ header {
 .analysis-summary-card p { color: #b8c8d1; font-size: 13px; }
 .analysis-summary-disclaimer { opacity: .7; line-height: 1.4; }
 @media (max-height: 650px) { .analysis-graph { height: 25px; margin-top: 3px; } .analysis-next-key { min-height: 23px; margin-top: 2px; } .analysis-position { min-height: 75px; } }
+
+/* Guided review: overview first, then a quiet full-screen board and coach card. */
+#analysis-panel.analysis-panel { background: radial-gradient(ellipse 105% 60% at 50% 5%, #223c42, #101923 75%); gap: 0; }
+.analysis-header { padding: 0 2px 10px; border-bottom: 1px solid rgba(255,255,255,.08); }
+.analysis-header h2 { font-size: 20px; letter-spacing: -.03em; }
+.analysis-header small { letter-spacing: .2em; }
+.analysis-stage { gap: 5px; justify-content: center; }
+.review-player-row { display: flex; align-items: center; gap: 9px; width: min(100%, 370px); flex: none; min-height: 24px; padding: 0 12px; }
+.review-player-row strong { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #e7f3f5; font-size: 13px; }
+.review-player-row small { color: #81949e; font-size: 9px; font-weight: 800; letter-spacing: .13em; }
+.review-player-dot { width: 13px; height: 13px; flex: none; border: 2px solid #d1ebff; border-radius: 50%; background: #78bafa; }
+.review-player-dot.opponent { border-color: #ffd9e4; background: #f48daa; }
+.review-board-wrap { display: flex; align-items: center; justify-content: center; gap: 9px; width: min(100%, 370px); flex: 1 1 0; min-height: 0; }
+.review-eval-rail { align-self: stretch; width: 9px; max-height: 47dvh; flex: none; overflow: hidden; border-radius: 99px; background: #f48daa; transform: rotate(180deg); }
+.review-eval-rail div { width: 100%; height: 50%; border-radius: 99px; background: #78bafa; transition: height .3s ease; }
+.analysis-stage .analysis-board { height: 100%; width: auto; max-height: 47dvh; max-width: calc(100% - 22px); flex: none; border-color: #526876; border-radius: 9px; }
+.analysis-position { width: min(100%, 480px); min-height: 106px; padding: 11px 14px; border: 1px solid rgba(255,255,255,.1); border-radius: 17px; background: #1d303a; text-align: left; }
+.review-coach-top { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+.review-coach-top #analysis-move-count { color: #9bafbb; font-size: 10px; font-weight: 800; letter-spacing: .12em; }
+#analysis-grade { padding: 3px 8px; border-radius: 8px; background: rgba(157,240,198,.13); color: #a8efc9; font-size: 9px; font-weight: 800; white-space: nowrap; }
+#analysis-grade[data-grade='mistake'] { background: rgba(241,157,112,.16); color: #ffb485; }
+.analysis-position strong { margin: 4px 0 2px; font-size: 17px; }
+.analysis-position p { min-height: 0; font-size: 11px; line-height: 1.35; }
+.analysis-position #analysis-best { margin-top: 5px; padding: 3px 0; background: none; }
+.review-timeline { flex: none; width: min(100%, 480px); margin: 7px auto 0; }
+.review-timeline-heading { display: flex; justify-content: space-between; align-items: center; color: #8ba2ad; font-size: 10px; font-weight: 800; letter-spacing: .12em; }
+.review-timeline-heading strong { color: #a8efc9; font-size: 16px; letter-spacing: 0; }
+.review-timeline .analysis-graph { height: 31px; margin: 3px auto; }
+.review-timeline .analysis-meter { height: 4px; }
+.analysis-navigation { margin-top: 7px; border: 0; background: #1d303a; }
+.analysis-navigation button { background: #a7edca; }
+.analysis-next-key { background: #243d49; }
+.analysis-note { color: #718996; font-size: 9px; }
+.analysis-summary { align-items: center; padding: max(18px, env(safe-area-inset-top)) 18px max(18px, env(safe-area-inset-bottom)); background: rgba(6,16,25,.94); }
+.analysis-summary-card { width: min(100%, 440px); max-height: 100%; overflow-y: auto; padding: 24px; border: 1px solid rgba(255,255,255,.1); border-radius: 27px; background: linear-gradient(160deg, #24403f, #1b2d38 42%, #162530); }
+.analysis-summary-card h3 { margin: 9px 0 2px; font-size: 31px; line-height: 1.05; letter-spacing: -.04em; }
+.analysis-summary-intro { margin: 8px 0 18px; }
+.analysis-summary-chart { padding: 13px; border: 1px solid rgba(255,255,255,.07); border-radius: 16px; background: rgba(6,22,30,.28); }
+#analysis-summary-graph { display: flex; align-items: end; gap: 2px; height: 73px; overflow: hidden; }
+#analysis-summary-graph span { flex: 1 1 0; min-width: 1px; border-radius: 3px 3px 0 0; background: #86d6b5; }
+#analysis-summary-graph span.critical { background: #f0a271; }
+.analysis-summary-chart > div:last-child { display: flex; justify-content: space-between; margin-top: 7px; color: #93aeb6; font-size: 9px; font-weight: 800; letter-spacing: .12em; }
+.analysis-summary-stats { margin: 16px 0 8px; }
+.analysis-summary-stats > div { background: rgba(255,255,255,.065); }
+.analysis-review-start { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; min-height: 54px; margin: 15px 0 0; border: 0; border-radius: 15px; background: #a7edca; color: #18342d; font: inherit; font-size: 16px; font-weight: 800; }
+.analysis-summary-disclaimer { margin-bottom: 0; font-size: 11px !important; }
+@media (max-height: 650px) { .analysis-header { padding-bottom: 5px; } .review-player-row { min-height: 18px; } .analysis-position { min-height: 88px; padding: 7px 11px; } .review-timeline { margin-top: 3px; } .review-timeline .analysis-graph { height: 22px; } .analysis-summary-card { padding: 18px; } #analysis-summary-graph { height: 45px; } .analysis-summary-card h3 { font-size: 25px; } }
+#analysis-panel[hidden], #analysis-summary[hidden] { display: none !important; }
+.analysis-summary-card { animation: reviewCardIn .32s cubic-bezier(.2,.8,.2,1) both; }
+.analysis-stage .analysis-board, .analysis-position { transition: border-color .2s, background-color .2s; }
+.analysis-navigation button:not(:disabled):active, .analysis-review-start:active { transform: scale(.96); }
+.analysis-header button:focus-visible, .analysis-navigation button:focus-visible, .analysis-graph-step:focus-visible, .analysis-review-start:focus-visible, .analysis-position button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+@keyframes reviewCardIn { from { opacity: 0; transform: translateY(20px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@media (prefers-reduced-motion: reduce) { .analysis-summary-card { animation: none; } .analysis-stage .analysis-board, .analysis-position { transition: none; } }

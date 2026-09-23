@@ -18,7 +18,7 @@ function harness() {
         if (elements.has(id)) return elements.get(id);
         const classes = new Set();
         const el = {
-            value: '', textContent: '', innerHTML: '', style: { setProperty() {} }, children: [],
+            value: '', textContent: '', innerHTML: '', style: { setProperty() {} }, children: [], dataset: {},
             classList: { add: x => classes.add(x), remove: x => classes.delete(x), contains: x => classes.has(x), toggle() {} },
             addEventListener() {}, setAttribute() {}, querySelector: x => element(id + x),
             append(child) { this.children.push(child); }, replaceChildren() { this.children = []; }
@@ -65,7 +65,7 @@ function harness() {
     source += `\ninitRenderer = () => {}; showToast = () => {}; startConfetti = () => {}; stopConfetti = () => {};
     globalThis.game = { STATE, startAIGame, startGame, resetRoom, sendMove, listenGameLoop, restoreOnlineRoom, roomUpdate, tryMove,
         recordAnalysisSnapshot, analysisHistory: () => analysisHistory, openMatchAnalysis, showAnalysisPosition,
-        setAnalysisReports: reports => analysisReports = reports, toggleAnalysisPreview };`;
+        setAnalysisReports: reports => analysisReports = reports, toggleAnalysisPreview, setAnalysisSummaryVisible };`;
     vm.runInContext(source, context);
     return { game: context.game, room, histories, pending, elements, storage };
 }
@@ -200,6 +200,10 @@ test('analysis arrow navigation updates the board without a scrolling turn list'
     game.recordAnalysisSnapshot(next);
     game.analysisHistory()[0].turn = 'p1';
     game.openMatchAnalysis();
+    assert.equal(elements.get('analysis-summary').hidden, false);
+    assert.equal(elements.get('analysis-summary-graph').children.length, 2);
+    game.setAnalysisSummaryVisible(false);
+    assert.equal(elements.get('analysis-summary').hidden, true);
     assert.equal(elements.get('analysis-step').textContent, '0 / 1');
     assert.equal(elements.get('analysis-prev').disabled, true);
     assert.equal(elements.get('analysis-board').children.length, 65);
